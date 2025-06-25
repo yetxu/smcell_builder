@@ -1,437 +1,151 @@
-// Copyright 2007-2010 Baptiste Lepilleur and The JsonCpp Authors
-// Distributed under MIT license, or public domain if desired and
-// recognized in your jurisdiction.
-// See file LICENSE for detail or copy at http://jsoncpp.sourceforge.net/LICENSE
+/******************************************************************************
 
-#ifndef JSON_READER_H_INCLUDED
-#define JSON_READER_H_INCLUDED
+Copyright (c) 2009-2010, Terry Caton
+All rights reserved.
 
-#if !defined(JSON_IS_AMALGAMATION)
-#include "json_features.h"
-#include "value.h"
-#endif // if !defined(JSON_IS_AMALGAMATION)
-#include <deque>
-#include <iosfwd>
-#include <istream>
-#include <stack>
-#include <string>
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright 
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the projecct nor the names of its contributors 
+      may be used to endorse or promote products derived from this software 
+      without specific prior written permission.
 
-// Disable warning C4251: <data member>: <type> needs to have dll-interface to
-// be used by...
-#if defined(JSONCPP_DISABLE_DLL_INTERFACE_WARNING)
-#pragma warning(push)
-#pragma warning(disable : 4251)
-#endif // if defined(JSONCPP_DISABLE_DLL_INTERFACE_WARNING)
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#pragma pack(push)
-#pragma pack()
+******************************************************************************/
 
-namespace Json {
 
-/** \brief Unserialize a <a HREF="http://www.json.org">JSON</a> document into a
- * Value.
- *
- * \deprecated Use CharReader and CharReaderBuilder.
- */
 
-class JSON_API Reader {
+#pragma once
+
+#include "elements.h"
+#include <iostream>
+#include <vector>
+
+namespace json
+{
+
+class Reader
+{
 public:
-  using Char = char;
-  using Location = const Char*;
+   // this structure will be reported in one of the exceptions defined below
+   struct Location
+   {
+      Location();
 
-  /** \brief An error tagged with where in the JSON text it was encountered.
-   *
-   * The offsets give the [start, limit) range of bytes within the text. Note
-   * that this is bytes, not codepoints.
-   */
-  struct StructuredError {
-    ptrdiff_t offset_start;
-    ptrdiff_t offset_limit;
-    String message;
-  };
+      unsigned int m_nLine;       // document line, zero-indexed
+      unsigned int m_nLineOffset; // character offset from beginning of line, zero indexed
+      unsigned int m_nDocOffset;  // character offset from entire document, zero indexed
+   };
 
-  /** \brief Constructs a Reader allowing all features for parsing.
-   * \deprecated Use CharReader and CharReaderBuilder.
-   */
-  Reader();
+   // thrown during the first phase of reading. generally catches low-level problems such
+   //  as errant characters or corrupt/incomplete documents
+   class ScanException : public Exception
+   {
+   public:
+      ScanException(const std::string& sMessage, const Reader::Location& locError) :
+         Exception(sMessage),
+         m_locError(locError) {}
 
-  /** \brief Constructs a Reader allowing the specified feature set for parsing.
-   * \deprecated Use CharReader and CharReaderBuilder.
-   */
-  Reader(const Features& features);
+      Reader::Location m_locError;
+   };
 
-  /** \brief Read a Value from a <a HREF="http://www.json.org">JSON</a>
-   * document.
-   *
-   * \param      document        UTF-8 encoded string containing the document
-   *                             to read.
-   * \param[out] root            Contains the root value of the document if it
-   *                             was successfully parsed.
-   * \param      collectComments \c true to collect comment and allow writing
-   *                             them back during serialization, \c false to
-   *                             discard comments.  This parameter is ignored
-   *                             if Features::allowComments_ is \c false.
-   * \return \c true if the document was successfully parsed, \c false if an
-   * error occurred.
-   */
-  bool parse(const std::string& document, Value& root,
-             bool collectComments = true);
+   // thrown during the second phase of reading. generally catches higher-level problems such
+   //  as missing commas or brackets
+   class ParseException : public Exception
+   {
+   public:
+      ParseException(const std::string& sMessage, const Reader::Location& locTokenBegin, const Reader::Location& locTokenEnd) :
+         Exception(sMessage),
+         m_locTokenBegin(locTokenBegin),
+         m_locTokenEnd(locTokenEnd) {}
 
-  /** \brief Read a Value from a <a HREF="http://www.json.org">JSON</a>
-   * document.
-   *
-   * \param      beginDoc        Pointer on the beginning of the UTF-8 encoded
-   *                             string of the document to read.
-   * \param      endDoc          Pointer on the end of the UTF-8 encoded string
-   *                             of the document to read.  Must be >= beginDoc.
-   * \param[out] root            Contains the root value of the document if it
-   *                             was successfully parsed.
-   * \param      collectComments \c true to collect comment and allow writing
-   *                             them back during serialization, \c false to
-   *                             discard comments.  This parameter is ignored
-   *                             if Features::allowComments_ is \c false.
-   * \return \c true if the document was successfully parsed, \c false if an
-   * error occurred.
-   */
-  bool parse(const char* beginDoc, const char* endDoc, Value& root,
-             bool collectComments = true);
+      Reader::Location m_locTokenBegin;
+      Reader::Location m_locTokenEnd;
+   };
 
-  /// \brief Parse from input stream.
-  /// \see Json::operator>>(std::istream&, Json::Value&).
-  bool parse(IStream& is, Value& root, bool collectComments = true);
 
-  /** \brief Returns a user friendly string that list errors in the parsed
-   * document.
-   *
-   * \return Formatted error message with the list of errors with their
-   * location in the parsed document. An empty string is returned if no error
-   * occurred during parsing.
-   * \deprecated Use getFormattedErrorMessages() instead (typo fix).
-   */
-  JSONCPP_DEPRECATED("Use getFormattedErrorMessages() instead.")
-  String getFormatedErrorMessages() const;
+   // if you know what the document looks like, call one of these...
+   static void Read(Object& object, std::istream& istr);
+   static void Read(Array& array, std::istream& istr);
+   static void Read(String& string, std::istream& istr);
+   static void Read(Number& number, std::istream& istr);
+   static void Read(Double& uchar, std::istream& istr);
+   static void Read(Boolean& boolean, std::istream& istr);
+   static void Read(Null& null, std::istream& istr);
 
-  /** \brief Returns a user friendly string that list errors in the parsed
-   * document.
-   *
-   * \return Formatted error message with the list of errors with their
-   * location in the parsed document. An empty string is returned if no error
-   * occurred during parsing.
-   */
-  String getFormattedErrorMessages() const;
-
-  /** \brief Returns a vector of structured errors encountered while parsing.
-   *
-   * \return A (possibly empty) vector of StructuredError objects. Currently
-   * only one error can be returned, but the caller should tolerate multiple
-   * errors.  This can occur if the parser recovers from a non-fatal parse
-   * error and then encounters additional errors.
-   */
-  std::vector<StructuredError> getStructuredErrors() const;
-
-  /** \brief Add a semantic error message.
-   *
-   * \param value   JSON Value location associated with the error
-   * \param message The error message.
-   * \return \c true if the error was successfully added, \c false if the Value
-   * offset exceeds the document size.
-   */
-  bool pushError(const Value& value, const String& message);
-
-  /** \brief Add a semantic error message with extra context.
-   *
-   * \param value   JSON Value location associated with the error
-   * \param message The error message.
-   * \param extra   Additional JSON Value location to contextualize the error
-   * \return \c true if the error was successfully added, \c false if either
-   * Value offset exceeds the document size.
-   */
-  bool pushError(const Value& value, const String& message, const Value& extra);
-
-  /** \brief Return whether there are any errors.
-   *
-   * \return \c true if there are no errors to report \c false if errors have
-   * occurred.
-   */
-  bool good() const;
+   // ...otherwise, if you don't know, call this & visit it
+   static void Read(UnknownElement& elementRoot, std::istream& istr);
 
 private:
-  enum TokenType {
-    tokenEndOfStream = 0,
-    tokenObjectBegin,
-    tokenObjectEnd,
-    tokenArrayBegin,
-    tokenArrayEnd,
-    tokenString,
-    tokenNumber,
-    tokenTrue,
-    tokenFalse,
-    tokenNull,
-    tokenArraySeparator,
-    tokenMemberSeparator,
-    tokenComment,
-    tokenError
-  };
+   struct Token
+   {
+      enum Type
+      {
+         TOKEN_OBJECT_BEGIN,  //    {
+         TOKEN_OBJECT_END,    //    }
+         TOKEN_ARRAY_BEGIN,   //    [
+         TOKEN_ARRAY_END,     //    ]
+         TOKEN_NEXT_ELEMENT,  //    ,
+         TOKEN_MEMBER_ASSIGN, //    :
+         TOKEN_STRING,        //    "xxx"
+         TOKEN_NUMBER,        //   int 类型
+         TOKEN_DOUBLE,		  //   [+/-]000.000[e[+/-]000]
+         TOKEN_BOOLEAN,       //    true -or- false
+         TOKEN_NULL,          //    null
+      };
 
-  class Token {
-  public:
-    TokenType type_;
-    Location start_;
-    Location end_;
-  };
+      Type nType;
+      std::string sValue;
 
-  class ErrorInfo {
-  public:
-    Token token_;
-    String message_;
-    Location extra_;
-  };
+      // for malformed file debugging
+      Reader::Location locBegin;
+      Reader::Location locEnd;
+   };
 
-  using Errors = std::deque<ErrorInfo>;
+   class InputStream;
+   class TokenStream;
+   typedef std::vector<Token> Tokens;
 
-  bool readToken(Token& token);
-  bool readTokenSkippingComments(Token& token);
-  void skipSpaces();
-  bool match(const Char* pattern, int patternLength);
-  bool readComment();
-  bool readCStyleComment();
-  bool readCppStyleComment();
-  bool readString();
-  void readNumber();
-  bool readValue();
-  bool readObject(Token& token);
-  bool readArray(Token& token);
-  bool decodeNumber(Token& token);
-  bool decodeNumber(Token& token, Value& decoded);
-  bool decodeString(Token& token);
-  bool decodeString(Token& token, String& decoded);
-  bool decodeDouble(Token& token);
-  bool decodeDouble(Token& token, Value& decoded);
-  bool decodeUnicodeCodePoint(Token& token, Location& current, Location end,
-                              unsigned int& unicode);
-  bool decodeUnicodeEscapeSequence(Token& token, Location& current,
-                                   Location end, unsigned int& unicode);
-  bool addError(const String& message, Token& token, Location extra = nullptr);
-  bool recoverFromError(TokenType skipUntilToken);
-  bool addErrorAndRecover(const String& message, Token& token,
-                          TokenType skipUntilToken);
-  void skipUntilSpace();
-  Value& currentValue();
-  Char getNextChar();
-  void getLocationLineAndColumn(Location location, int& line,
-                                int& column) const;
-  String getLocationLineAndColumn(Location location) const;
-  void addComment(Location begin, Location end, CommentPlacement placement);
+   template <typename ElementTypeT>   
+   static void Read_i(ElementTypeT& element, std::istream& istr);
 
-  static bool containsNewLine(Location begin, Location end);
-  static String normalizeEOL(Location begin, Location end);
+   // scanning istream into token sequence
+   void Scan(Tokens& tokens, InputStream& inputStream);
 
-  using Nodes = std::stack<Value*>;
-  Nodes nodes_;
-  Errors errors_;
-  String document_;
-  Location begin_{};
-  Location end_{};
-  Location current_{};
-  Location lastValueEnd_{};
-  Value* lastValue_{};
-  String commentsBefore_;
-  Features features_;
-  bool collectComments_{};
-}; // Reader
+   void EatWhiteSpace(InputStream& inputStream);
+   std::string MatchString(InputStream& inputStream);
+   std::string MatchNumber(InputStream& inputStream);
+   std::string MatchExpectedString(InputStream& inputStream, const std::string& sExpected);
 
-/** Interface for reading JSON from a char array.
- */
-class JSON_API CharReader {
-public:
-  struct JSON_API StructuredError {
-    ptrdiff_t offset_start;
-    ptrdiff_t offset_limit;
-    String message;
-  };
+   // parsing token sequence into element structure
+   void Parse(UnknownElement& element, TokenStream& tokenStream);
+   void Parse(Object& object, TokenStream& tokenStream);
+   void Parse(Array& array, TokenStream& tokenStream);
+   void Parse(String& string, TokenStream& tokenStream);
+   void Parse(Number& number, TokenStream& tokenStream);
+   void Parse(Double& uchar, TokenStream& tokenStream);
+   void Parse(Boolean& boolean, TokenStream& tokenStream);
+   void Parse(Null& null, TokenStream& tokenStream);
 
-  virtual ~CharReader() = default;
-  /** \brief Read a Value from a <a HREF="http://www.json.org">JSON</a>
-   * document. The document must be a UTF-8 encoded string containing the
-   * document to read.
-   *
-   * \param      beginDoc Pointer on the beginning of the UTF-8 encoded string
-   *                      of the document to read.
-   * \param      endDoc   Pointer on the end of the UTF-8 encoded string of the
-   *                      document to read. Must be >= beginDoc.
-   * \param[out] root     Contains the root value of the document if it was
-   *                      successfully parsed.
-   * \param[out] errs     Formatted error messages (if not NULL) a user
-   *                      friendly string that lists errors in the parsed
-   *                      document.
-   * \return \c true if the document was successfully parsed, \c false if an
-   * error occurred.
-   */
-  virtual bool parse(char const* beginDoc, char const* endDoc, Value* root,
-                     String* errs);
-
-  /** \brief Returns a vector of structured errors encountered while parsing.
-   * Each parse call resets the stored list of errors.
-   */
-  std::vector<StructuredError> getStructuredErrors() const;
-
-  class JSON_API Factory {
-  public:
-    virtual ~Factory() = default;
-    /** \brief Allocate a CharReader via operator new().
-     * \throw std::exception if something goes wrong (e.g. invalid settings)
-     */
-    virtual CharReader* newCharReader() const = 0;
-  }; // Factory
-
-protected:
-  class Impl {
-  public:
-    virtual ~Impl() = default;
-    virtual bool parse(char const* beginDoc, char const* endDoc, Value* root,
-                       String* errs) = 0;
-    virtual std::vector<StructuredError> getStructuredErrors() const = 0;
-  };
-
-  explicit CharReader(std::unique_ptr<Impl> impl) : _impl(std::move(impl)) {}
-
-private:
-  std::unique_ptr<Impl> _impl;
-}; // CharReader
-
-/** \brief Build a CharReader implementation.
- *
- * Usage:
- *   \code
- *   using namespace Json;
- *   CharReaderBuilder builder;
- *   builder["collectComments"] = false;
- *   Value value;
- *   String errs;
- *   bool ok = parseFromStream(builder, std::cin, &value, &errs);
- *   \endcode
- */
-class JSON_API CharReaderBuilder : public CharReader::Factory {
-public:
-  // Note: We use a Json::Value so that we can add data-members to this class
-  // without a major version bump.
-  /** Configuration of this builder.
-   * These are case-sensitive.
-   * Available settings (case-sensitive):
-   * - `"collectComments": false or true`
-   *   - true to collect comment and allow writing them back during
-   *     serialization, false to discard comments.  This parameter is ignored
-   *     if allowComments is false.
-   * - `"allowComments": false or true`
-   *   - true if comments are allowed.
-   * - `"allowTrailingCommas": false or true`
-   *   - true if trailing commas in objects and arrays are allowed.
-   * - `"strictRoot": false or true`
-   *   - true if root must be either an array or an object value
-   * - `"allowDroppedNullPlaceholders": false or true`
-   *   - true if dropped null placeholders are allowed. (See
-   *     StreamWriterBuilder.)
-   * - `"allowNumericKeys": false or true`
-   *   - true if numeric object keys are allowed.
-   * - `"allowSingleQuotes": false or true`
-   *   - true if '' are allowed for strings (both keys and values)
-   * - `"stackLimit": integer`
-   *   - Exceeding stackLimit (recursive depth of `readValue()`) will cause an
-   *     exception.
-   *   - This is a security issue (seg-faults caused by deeply nested JSON), so
-   *     the default is low.
-   * - `"failIfExtra": false or true`
-   *   - If true, `parse()` returns false when extra non-whitespace trails the
-   *     JSON value in the input string.
-   * - `"rejectDupKeys": false or true`
-   *   - If true, `parse()` returns false when a key is duplicated within an
-   *     object.
-   * - `"allowSpecialFloats": false or true`
-   *   - If true, special float values (NaNs and infinities) are allowed and
-   *     their values are lossfree restorable.
-   * - `"skipBom": false or true`
-   *   - If true, if the input starts with the Unicode byte order mark (BOM),
-   *     it is skipped.
-   *
-   * You can examine 'settings_` yourself to see the defaults. You can also
-   * write and read them just like any JSON Value.
-   * \sa setDefaults()
-   */
-  Json::Value settings_;
-
-  CharReaderBuilder();
-  ~CharReaderBuilder() override;
-
-  CharReader* newCharReader() const override;
-
-  /** \return true if 'settings' are legal and consistent;
-   *   otherwise, indicate bad settings via 'invalid'.
-   */
-  bool validate(Json::Value* invalid) const;
-
-  /** A simple way to update a specific setting.
-   */
-  Value& operator[](const String& key);
-
-  /** Called by ctor, but you can use this to reset settings_.
-   * \pre 'settings' != NULL (but Json::null is fine)
-   * \remark Defaults:
-   * \snippet src/lib_json/json_reader.cpp CharReaderBuilderDefaults
-   */
-  static void setDefaults(Json::Value* settings);
-  /** Same as old Features::strictMode().
-   * \pre 'settings' != NULL (but Json::null is fine)
-   * \remark Defaults:
-   * \snippet src/lib_json/json_reader.cpp CharReaderBuilderStrictMode
-   */
-  static void strictMode(Json::Value* settings);
-  /** ECMA-404 mode.
-   * \pre 'settings' != NULL (but Json::null is fine)
-   * \remark Defaults:
-   * \snippet src/lib_json/json_reader.cpp CharReaderBuilderECMA404Mode
-   */
-  static void ecma404Mode(Json::Value* settings);
+   const std::string& MatchExpectedToken(Token::Type nExpected, TokenStream& tokenStream);
 };
 
-/** Consume entire stream and use its begin/end.
- * Someday we might have a real StreamReader, but for now this
- * is convenient.
- */
-bool JSON_API parseFromStream(CharReader::Factory const&, IStream&, Value* root,
-                              String* errs);
 
-/** \brief Read from 'sin' into 'root'.
- *
- * Always keep comments from the input JSON.
- *
- * This can be used to read a file into a particular sub-object.
- * For example:
- *   \code
- *   Json::Value root;
- *   cin >> root["dir"]["file"];
- *   cout << root;
- *   \endcode
- * Result:
- * \verbatim
- * {
- * "dir": {
- *    "file": {
- *    // The input stream JSON would be nested here.
- *    }
- * }
- * }
- * \endverbatim
- * \throw std::exception on parse error.
- * \see Json::operator<<()
- */
-JSON_API IStream& operator>>(IStream&, Value&);
+} // End namespace
 
-} // namespace Json
 
-#pragma pack(pop)
-
-#if defined(JSONCPP_DISABLE_DLL_INTERFACE_WARNING)
-#pragma warning(pop)
-#endif // if defined(JSONCPP_DISABLE_DLL_INTERFACE_WARNING)
-
-#endif // JSON_READER_H_INCLUDED
+#include "reader.inl"
