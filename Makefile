@@ -2,7 +2,7 @@
 
 EXE = RadarPublisher
 
-LIBS = pthread
+LIBS = pthread mysqlclient
 
 LIBS_SEARCH_PATH =
 INCLUDES =

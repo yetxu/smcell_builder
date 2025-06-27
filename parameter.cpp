@@ -37,6 +37,24 @@ void Parameter::LoadConfig(){
 
     stream_server_num  = Number(root["stream_server_num"]).Value();    
 
+    // Load database configuration
+    if (root.Find("database") != root.End()) {
+        const Object& db_config = root["database"];
+        
+        strcpy(db_host, String(db_config["host"]).Value().c_str());
+        db_port = Number(db_config["port"]).Value();
+        strcpy(db_name, String(db_config["name"]).Value().c_str());
+        strcpy(db_user, String(db_config["user"]).Value().c_str());
+        strcpy(db_pass, String(db_config["password"]).Value().c_str());
+    } else {
+        // Default values if database configuration is not present
+        strcpy(db_host, "localhost");
+        db_port = 3306;
+        strcpy(db_name, "smcell_db");
+        strcpy(db_user, "root");
+        strcpy(db_pass, "");
+    }
+
 #ifdef DISPLAY_PARAMETER
     cout.setf(ios::left);
 
@@ -45,6 +63,11 @@ void Parameter::LoadConfig(){
     cout << setw(20)  << "radar_video_port " << inner_radar_port <<endl;
     cout << setw(20)  << "dst ip " << dst_ip << endl;
     cout << setw(20)  << "dst port " << dst_port << endl;
+    cout << setw(20)  << "db host " << db_host << endl;
+    cout << setw(20)  << "db port " << db_port << endl;
+    cout << setw(20)  << "db name " << db_name << endl;
+    cout << setw(20)  << "db user " << db_user << endl;
+    cout << setw(20)  << "db pass " << db_pass << endl;
 
 #endif
 }

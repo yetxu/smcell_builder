@@ -4,5 +4,13 @@
 	"inner_radar_port" : 132002,
 	"dst_ip" : "199.1.17.25",
 	"dst_port" : 110011,
-	"stream_server_num" : 15
+	"stream_server_num" : 15,
+	
+	"database": {
+		"host": "localhost",
+		"port": 3306,
+		"name": "smcell_db",
+		"user": "smcell_user",
+		"password": "smcell_pass"
+	}
 }
