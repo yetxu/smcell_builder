@@ -250,19 +250,4 @@ void Publisher::RecvInnerMsg() {
 	LOG_INFO("Exiting inner message receive loop");
 }
 
-// 处理注册响应帧 (0x03)
-void Publisher::ProcessRegisterResponse(const char* buffer,int len) {
-	if (len < 5) {
-		LOG_WARN("Received register response with insufficient length: %d", len);
-		return;
-	}
-	uint8_t signal_type = buffer[0];
-	if (signal_type != 0x03) {
-		LOG_WARN("Received unexpected signal type: 0x%02X, expected 0x03", signal_type);
-		return; // 判断响应帧
-	}
 
-	uint32_t station_ip;
-	memcpy(&station_ip,buffer + 1 ,4);
-	LOG_INFO("Received register response from station IP: %u", station_ip);
-}

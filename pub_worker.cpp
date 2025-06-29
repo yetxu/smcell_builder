@@ -563,14 +563,18 @@ void PubWorker::CheckAndSndCell(char* cell_buffer, bool* has_data_in_cell) {
 	std::string source_ip = std::to_string(devID); // 这里需要根据实际的数据包格式来提取IP
 	std::string label = g_network_manager.GetLabelByIP(source_ip);
 	
-	if (label.empty()) {
-		LOG_DEBUG("No label found for device ID %d, using default security level", devID);
+	LOG_DEBUG("srcID:%d\n", devID);
+	if (devinZQ_map_.find(devID) == devinZQ_map_.end()) {
+		LOG_DEBUG("not find zqID,user 0xFB\n");
 		*(uint16_t*) (cell_buffer + 9) = security_level_;
 	} else {
-		LOG_DEBUG("Found label '%s' for device ID %d", label.c_str(), devID);
-		// 这里可以根据标签设置相应的安全级别
-		// 暂时使用默认的安全级别
-		*(uint16_t*) (cell_buffer + 9) = security_level_;
+		if (devinZQ_map_[devID] == 0) {
+			LOG_DEBUG("find zqID=0,user 0xFB\n");
+			*(uint16_t*) (cell_buffer + 9) = security_level_;
+		} else {
+			LOG_DEBUG("devID:%d\n", devinZQ_map_[devID]);
+			cell_buffer[9] = (char) devinZQ_map_[devID];
+		}
 	}
 
 	uint16_t checksum = CRC_16(0, (uint8_t*) cell_buffer + SECURITY_HEAD_LEN,

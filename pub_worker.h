@@ -65,8 +65,6 @@ private:
 	uint16_t security_level_;
 	bool work_over_;
 	DEVINZQMap devinZQ_map_;
-	 // MySQL连接器
-    MySQLConnector mysql_connector_;
 
 };
 #endif

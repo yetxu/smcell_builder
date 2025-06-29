@@ -18,6 +18,7 @@ public:
 	void StartWork();
 	void RecvData();
 	void RecvInnerMsg();
+	
 	pthread_t recv_thread() {
 		return recv_thread_;
 	}
