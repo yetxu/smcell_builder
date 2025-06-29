@@ -4,8 +4,6 @@
 #define DISPLAY_PARAMETER
 #define CONFIG_FILE "./config.json"
 
-enum class NetworkMode { UNICAST, MULTICAST, BROADCAST };
-
 class Parameter{
 
 public:
@@ -22,12 +20,13 @@ public:
         MAX_DB_USER_SIZE = 32,
         MAX_DB_PASS_SIZE = 32
     };
-    NetworkMode net_mode;
+
     int cell_length;
 
     int radar_recv_port;
 
     int inner_radar_port;
+
 
     char dst_ip[MAX_IP_SIZE];  //the destation ipaddress of cell from pubserver
 
@@ -35,7 +34,6 @@ public:
 
     int stream_server_num;     //max number of stream server
 
-    // Database configuration
     char db_host[MAX_IP_SIZE];     // Database host address
     int db_port;                   // Database port
     char db_name[MAX_DB_NAME_SIZE];// Database name

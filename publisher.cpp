@@ -17,13 +17,17 @@ using namespace std;
 
 void* RecvDataFunc(void* param) {
 	Publisher* pub = (Publisher*) param;
+	LOG_INFO("Starting receive data thread");
 	pub->RecvData();
+	LOG_INFO("Receive data thread stopped");
 	return (void*) 0;
 }
 void* RecvInnerMsgFunc(void* param) {
 	//cout << "the thread no using" << endl;
 	Publisher* pub = (Publisher*) param;
+	LOG_INFO("Starting inner communication thread");
 	pub->RecvInnerMsg();
+	LOG_INFO("Inner communication thread stopped");
 	return (void*) 0;
 }
 
@@ -31,9 +35,11 @@ Publisher::Publisher() {
 	inner_com_socket_ = new UdpSocket();
 	recv_socket_ = new UdpSocket();
 //	printfNum = new PrintfNum();
+	LOG_DEBUG("Publisher object created");
 }
 
 Publisher::~Publisher() {
+	LOG_DEBUG("Publisher object destroyed");
 	StopWork();
 	delete recv_socket_;
 	delete inner_com_socket_;
@@ -48,23 +54,35 @@ bool Publisher::Init(Parameter* parameter) {
 	strcpy(dst_ip_, parameter->dst_ip);
 	cell_size_ = parameter->cell_length;   //491
 
+	LOG_INFO("Initializing Publisher with parameters:");
+	LOG_INFO("  - Receive port: %d", recv_port);
+	LOG_INFO("  - Inner communication port: %d", com_bind_port);
+	LOG_INFO("  - Destination IP: %s", dst_ip_);
+	LOG_INFO("  - Destination port: %d", dst_port_);
+	LOG_INFO("  - Cell size: %d", cell_size_);
+
 	if (!inner_com_socket_->Create()) {
+		LOG_ERROR("Failed to create inner communication socket");
 		return false;
 	}
 
 	if (!inner_com_socket_->Bind("0.0.0.0", com_bind_port)) {
+		LOG_ERROR("Failed to bind inner communication socket to port %d", com_bind_port);
 		return false;
 	}
 
 	if (!recv_socket_->Create()) {
+		LOG_ERROR("Failed to create receive socket");
 		return false;
 	}
 
 	if (!recv_socket_->Bind("0.0.0.0", recv_port)) {
+		LOG_ERROR("Failed to bind receive socket to port %d", recv_port);
 		return false;
 	}
 
 	AddTransaction(60000);   // temporary  video transaction id 10000
+	LOG_INFO("Publisher initialization completed successfully");
 	return true;
 }
 bool Publisher::Init(int argc, char* argv[]) {
@@ -77,27 +95,41 @@ bool Publisher::Init(int argc, char* argv[]) {
 	strcpy(dst_ip_, argv[5]);
 	cell_size_ = atoi(argv[6]);
 
+	LOG_INFO("Initializing Publisher with command line arguments");
+	LOG_INFO("  - Publish type: %d", pub_type_);
+	LOG_INFO("  - Receive port: %d", recv_port);
+	LOG_INFO("  - Inner communication port: %d", com_bind_port);
+	LOG_INFO("  - Destination IP: %s", dst_ip_);
+	LOG_INFO("  - Destination port: %d", dst_port_);
+	LOG_INFO("  - Cell size: %d", cell_size_);
+
 	if (!inner_com_socket_->Create()) {
+		LOG_ERROR("Failed to create inner communication socket");
 		return false;
 	}
 
 	if (!inner_com_socket_->Bind("0.0.0.0", com_bind_port)) {
+		LOG_ERROR("Failed to bind inner communication socket to port %d", com_bind_port);
 		return false;
 	}
 	if (!recv_socket_->Create()) {
+		LOG_ERROR("Failed to create receive socket");
 		return false;
 	}
-
 	if (!recv_socket_->Bind("0.0.0.0", recv_port)) {
+		LOG_ERROR("Failed to bind receive socket to port %d", recv_port);
 		return false;
 	}
+	LOG_INFO("Publisher initialization completed successfully");
 	return true;
 }
 
 void Publisher::StartWork() {
+	LOG_INFO("Starting Publisher work threads");
 	work_over_ = false;
 	StartThread(&recv_thread_, RecvDataFunc, this);
 	StartThread(&inner_com_thread_, RecvInnerMsgFunc, this);
+	LOG_INFO("Publisher work threads started");
 }
 
 void Publisher::RecvData() {
@@ -108,6 +140,7 @@ void Publisher::RecvData() {
 	char sendbuf[] = { 1, 2, 3, 4, 5 };
 	//recv_socket_->SendTo(sendbuf, 5, );
 	uint32_t trans_id;
+	LOG_INFO("Entering receive data loop");
 	while (!work_over_) {
 		recv_len = recv_socket_->Recv(recv_buffer, kMaxBufSize);
 		//printf("recv_len:%d\n",recv_len);
@@ -116,6 +149,9 @@ void Publisher::RecvData() {
 		}
 //		printfNum->setRecvNum();
 		++recvNum;
+
+		// 记录网络接收日志
+		LOG_NETWORK("UDP_RECV", "0.0.0.0", 0, recv_len);
 
 		//20220919
 		//printf("sleep_num = %d\n", sleep_num);
@@ -129,55 +165,51 @@ void Publisher::RecvData() {
 		// trans_id = ntohl(*(uint32_t*)recv_buffer);
 		trans_id = 60000;
 		if (!ExistTrans(trans_id)) {
-			char tmp_str[200];
-			sprintf(tmp_str,
-					"recv data with trans_id %d, but this trans_id doesn't exist in worker map",
-					trans_id);
-			g_logger.LogToFile(tmp_str);
+			LOG_ERROR("Transaction ID %d not found in worker map", trans_id);
 		} else {
 			worker_map_[trans_id]->RecvPacket(recv_buffer, recv_len);
 		}
 	}
+	LOG_INFO("Exiting receive data loop");
 }
 
 void Publisher::StopWork() {
+	LOG_INFO("Stopping Publisher work");
 	StopThread(recv_thread_);
 	//delete all work thread
 	PubWkMapIt it = worker_map_.begin();
 	while (it != worker_map_.end()) {
+		LOG_DEBUG("Deleting worker for transaction ID %d", it->first);
 		delete it->second;
 		++it;
 	}
+	LOG_INFO("Publisher work stopped");
 }
 
 void Publisher::AddTransaction(uint32_t trans_id) {
 	if (ExistTrans(trans_id)) {
-		char tmp_str[200];
-		sprintf(tmp_str,
-				"try to add transaction with trans_id %d, but this transaction already exists in map",
-				trans_id);
-		g_logger.LogToFile(tmp_str);
+		LOG_WARN("Transaction ID %d already exists in worker map", trans_id);
 		return;
 	}
 
+	LOG_INFO("Adding transaction ID %d with publish type %d", trans_id, pub_type_);
 	cout << setw(20) << "pub_type " << pub_type_ << endl;
 	PubWorker* pub_worker = new PubWorker(pub_type_);
 	pub_worker->Init(trans_id, cell_size_, dst_port_, dst_ip_);
 	pub_worker->StartWork();
 	worker_map_[trans_id] = pub_worker;
+	LOG_INFO("Transaction ID %d added successfully", trans_id);
 }
 
 void Publisher::DelTransaction(uint32_t trans_id) {
 	if (!ExistTrans(trans_id)) {
-		char tmp_str[200];
-		sprintf(tmp_str,
-				"try to del transaction with trans_id %d, but this transaction doesn't exist in map",
-				trans_id);
-		g_logger.LogToFile(tmp_str);
+		LOG_WARN("Transaction ID %d not found in worker map for deletion", trans_id);
 		return;
 	}
+	LOG_INFO("Deleting transaction ID %d", trans_id);
 	delete worker_map_[trans_id];
 	worker_map_.erase(trans_id);
+	LOG_INFO("Transaction ID %d deleted successfully", trans_id);
 }
 
 bool Publisher::ExistTrans(uint32_t trans_id) {
@@ -196,6 +228,7 @@ void Publisher::RecvInnerMsg() {
 	int recv_len;
 	char* recv_pos;
 	struct sockaddr_in src_addr;
+	LOG_INFO("Entering inner message receive loop");
 	while (!work_over_) {
 		recv_len = inner_com_socket_->RecvFrom(recv_buffer, kMaxBufSize,
 				&src_addr);
@@ -203,7 +236,7 @@ void Publisher::RecvInnerMsg() {
 		if (signal_type == 0x10) {
 			int cell_length = *(int*) (recv_buffer + 2);
 			cell_size_ = cell_length;
-			printf("set cell_size%d\n", cell_length);
+			LOG_INFO("Received cell size update: %d", cell_length);
 			//gParameter.cell_length = cell_length;
 			//gParameter.SaveConfig();
 			PubWkMapIt it = worker_map_.begin();
@@ -211,6 +244,25 @@ void Publisher::RecvInnerMsg() {
 				it->second->SetCellSize(cell_length);
 				++it;
 			}
+			LOG_INFO("Updated cell size for all workers");
 		}
 	}
+	LOG_INFO("Exiting inner message receive loop");
+}
+
+// 处理注册响应帧 (0x03)
+void Publisher::ProcessRegisterResponse(const char* buffer,int len) {
+	if (len < 5) {
+		LOG_WARN("Received register response with insufficient length: %d", len);
+		return;
+	}
+	uint8_t signal_type = buffer[0];
+	if (signal_type != 0x03) {
+		LOG_WARN("Received unexpected signal type: 0x%02X, expected 0x03", signal_type);
+		return; // 判断响应帧
+	}
+
+	uint32_t station_ip;
+	memcpy(&station_ip,buffer + 1 ,4);
+	LOG_INFO("Received register response from station IP: %u", station_ip);
 }

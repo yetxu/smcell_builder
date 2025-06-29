@@ -48,6 +48,8 @@ enum VideoCellType{
 
 };
 
+typedef std::map<std::string, std::string> NetworkRelationMap;
+
 //when pack or unpack cell,  use this pointer of MsgPacket or VideoPacket point
 //to a positon in buffer, we can get or set the packet propertities automatically  EVEN 
 //when considering the byte-alignment 

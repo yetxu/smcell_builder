@@ -6,6 +6,7 @@
 #include"CRC_16.h"
 #include"json/reader.h"
 #include"json/writer.h"
+#include"network_manager.h"
 #include<fstream>
 #include<iostream>
 
@@ -41,9 +42,11 @@ PubWorker::PubWorker(int type) :
 	fifo_queue_ = new FifoQueue();
 
 	security_level_ = ntohs(0xFB31);  //security level, how to get ?
+	LOG_DEBUG("PubWorker created with type %d", type);
 }
 
 PubWorker::~PubWorker() {
+	LOG_DEBUG("PubWorker destroyed");
 	StopProcThrd();
 	delete send_socket_;
 	delete fifo_queue_;
@@ -65,7 +68,7 @@ void PubWorker::LoadLevelMap() {
 
 	int num = Number(root["sumnum"]).Value();
 
-	printf("\n----Load SE Level Map----\n");
+	LOG_INFO("Loading SE Level Map from map.json");
 	cout << setw(20) << "Sumnum " << num << endl;
 	for (int i = 1; i < num + 1; i++) {
 		memset(str, '\0', 100);
@@ -86,7 +89,7 @@ void PubWorker::LoadLevelMap() {
 		cout << setw(20) << index++ << setw(20) << it->first << setw(20)
 				<< it->second << endl;
 	}
-	printf("----------------------\n\n");
+	LOG_INFO("Loaded %zu SE level mappings", devinZQ_map_.size());
 }
 void PubWorker::Init(uint32_t trans_id, int cell_size, int dst_port,
 		char* dst_ip) {
@@ -97,6 +100,11 @@ void PubWorker::Init(uint32_t trans_id, int cell_size, int dst_port,
 	target_addr_.sin_port = htons(dst_port);
 	target_addr_.sin_addr.s_addr = inet_addr(dst_ip);
 
+	LOG_INFO("Initializing PubWorker:");
+	LOG_INFO("  - Transaction ID: %u", trans_id);
+	LOG_INFO("  - Cell size: %d", cell_size);
+	LOG_INFO("  - Destination: %s:%d", dst_ip, dst_port);
+
 	//init devinZQ map
 	//devinZQ_map_[38]=29;
 	//printf("map num=%d\n",devinZQ_map_.size());
@@ -105,36 +113,40 @@ void PubWorker::Init(uint32_t trans_id, int cell_size, int dst_port,
 
 	//20220919
 	if (pthread_mutex_init(&mutex, NULL)) {
-		printf("mutex creat failed\n");
+		LOG_ERROR("Failed to create mutex");
 	} else {
-		printf("mutex creat success\n");
+		LOG_DEBUG("Mutex created successfully");
 	}
 	if (pthread_cond_init(&cond, NULL)) {
-		printf("cond creat failed\n");
+		LOG_ERROR("Failed to create condition variable");
 	} else {
-		printf("cond creat success\n");
+		LOG_DEBUG("Condition variable created successfully");
 	}
 }
 
 void PubWorker::StartWork() {
-	printf("StartWork, type is %d\n", pub_type_);
+	LOG_INFO("Starting PubWorker with type %d", pub_type_);
 	if (!work_over_) {
 		return;
 	}
 	work_over_ = false;
 	StartThread(&proc_thread_, ProcsFunc, this);
+	LOG_INFO("PubWorker started successfully");
 }
 
 void PubWorker::StopProcThrd() {
 	if (work_over_) {
 		return;
 	}
+	LOG_INFO("Stopping PubWorker");
 	work_over_ = true;
 	StopThread(proc_thread_);
+	LOG_INFO("PubWorker stopped");
 }
 
 void PubWorker::RecvPacket(char* packet, int len) {
 	fifo_queue_->PushPacket(packet, (uint16_t) len);
+	LOG_DEBUG("Received packet of length %d", len);
 }
 
 void PubWorker::ProcsMsg() {
@@ -338,7 +350,6 @@ int PubWorker::PackCompleteMsgPack(int msg_type, char* cell_buffer,
 }
 
 void PubWorker::ProcsVideo() {
-	printf("PubWorker working\n");
 	const int kMaxBufSize = 65536;
 	char data_buf[kMaxBufSize];   //get the data from fifoqueue
 	char* data_pos;
@@ -547,23 +558,25 @@ void PubWorker::CheckAndSndCell(char* cell_buffer, bool* has_data_in_cell) {
 	uint16_t devID = *(uint16_t *) (cell_buffer + 24);
 	devID = htons(devID);
 
-	printf("srcID:%d\n", devID);
-	if (devinZQ_map_.find(devID) == devinZQ_map_.end()) {
-		printf("not find zqID,user 0xFB\n");
+	
+	// 使用网络管理器获取IP对应的标签
+	std::string source_ip = std::to_string(devID); // 这里需要根据实际的数据包格式来提取IP
+	std::string label = g_network_manager.GetLabelByIP(source_ip);
+	
+	if (label.empty()) {
+		LOG_DEBUG("No label found for device ID %d, using default security level", devID);
 		*(uint16_t*) (cell_buffer + 9) = security_level_;
 	} else {
-		if (devinZQ_map_[devID] == 0) {
-			printf("find zqID=0,user 0xFB\n");
-			*(uint16_t*) (cell_buffer + 9) = security_level_;
-		} else {
-			printf("devID:%d\n", devinZQ_map_[devID]);
-			cell_buffer[9] = (char) devinZQ_map_[devID];
-		}
+		LOG_DEBUG("Found label '%s' for device ID %d", label.c_str(), devID);
+		// 这里可以根据标签设置相应的安全级别
+		// 暂时使用默认的安全级别
+		*(uint16_t*) (cell_buffer + 9) = security_level_;
 	}
 
 	uint16_t checksum = CRC_16(0, (uint8_t*) cell_buffer + SECURITY_HEAD_LEN,
 			cell_size_ - SECURITY_HEAD_LEN - CHECK_SUM_SIZE);
 	*(uint16_t*) (cell_buffer + cell_size_ - CHECK_SUM_SIZE) = checksum;
+	
 	//加控制头需要去掉注释，并注释第一个send_socket，使用第二个send_socket
 	char data_buffer[MAX_CELL_SIZE];
 	memset(data_buffer, 0, CONTROL_HEADER_LEN + cell_size_);
@@ -582,12 +595,24 @@ void PubWorker::CheckAndSndCell(char* cell_buffer, bool* has_data_in_cell) {
 	data_pos += 1;
 	*(uint8_t*) data_pos = 0x03;		//cell_buffer+8
 	memcpy(data_buffer + CONTROL_HEADER_LEN, cell_buffer, cell_size_);
+	
 	//send_socket_->SendTo(cell_buffer, cell_size_, target_addr_);
 #ifdef TEST
 	printf("send data...\n");
 #endif
-	send_socket_->SendTo(data_buffer, cell_size_ + CONTROL_HEADER_LEN,
-			target_addr_);
+	
+	// 发送数据
+	int send_result = send_socket_->SendTo(data_buffer, cell_size_ + CONTROL_HEADER_LEN, target_addr_);
+	
+	// 记录网络发送日志
+	if (send_result > 0) {
+		LOG_NETWORK("UDP_SEND", inet_ntoa(target_addr_.sin_addr), ntohs(target_addr_.sin_port), send_result);
+		LOG_DEBUG("Successfully sent %d bytes to %s:%d", send_result, 
+		         inet_ntoa(target_addr_.sin_addr), ntohs(target_addr_.sin_port));
+	} else {
+		LOG_ERROR("Failed to send data to %s:%d", inet_ntoa(target_addr_.sin_addr), ntohs(target_addr_.sin_port));
+	}
+	
 	*has_data_in_cell = false;
 	cout << "recvNum:" << recvNum << ", sendNum:" << ++sendNum << ", waitNum:" << waitNum << ", splitNum:"<< splitNum << endl;
 }
@@ -595,3 +620,4 @@ void PubWorker::CheckAndSndCell(char* cell_buffer, bool* has_data_in_cell) {
 void PubWorker::SetCellSize(int s) {
 	cell_size_ = s;
 }
+
