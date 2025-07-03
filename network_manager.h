@@ -4,7 +4,7 @@
 #include <map>
 #include <string>
 #include <mutex>
-#include "mysql_connector.h"
+#include "db_manager.h"
 #include "cell_factory.h"
 
 class NetworkManager {
