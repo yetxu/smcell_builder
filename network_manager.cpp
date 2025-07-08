@@ -2,10 +2,17 @@
 #include "logger.h"
 #include <iostream>
 
-NetworkManager& NetworkManager::GetInstance() {
-    static NetworkManager instance;
-    return instance;
+NetworkManager::NetworkManager() : 
+    initialized_(false),
+    db_manager_(NULL) {
+    pthread_mutex_init(&relations_mutex_, NULL);
 }
+
+NetworkManager::~NetworkManager() {
+    Cleanup();
+    pthread_mutex_destroy(&relations_mutex_);
+}
+
 
 bool NetworkManager::Initialize(const char* host, const char* user, 
                               const char* password, const char* database, 
@@ -16,23 +23,34 @@ bool NetworkManager::Initialize(const char* host, const char* user,
     LOG_INFO("  - Database: %s", database);
     LOG_INFO("  - User: %s", user);
     
-    // 连接到MySQL数据库
-    if (!mysql_connector_.Connect(host, user, password, database, port)) {
-        LOG_ERROR("Failed to connect to MySQL database: %s", mysql_connector_.GetLastError());
+    pthread_mutex_lock(&relations_mutex_);
+    
+    if (initialized_) {
+        pthread_mutex_unlock(&relations_mutex_);
+        return true;
+    }
+
+    DbManager* db_manager = DbManager::GetInstance();
+    if (!db_manager->Initialize(host, port, database, user, password)) {
+        LOG_ERROR("Failed to connect to MySQL database");
+        pthread_mutex_unlock(&relations_mutex_);
         return false;
     }
     
     LOG_INFO("Successfully connected to MySQL database");
     
-    // 加载组网关系表
     if (!LoadNetworkRelations()) {
         LOG_ERROR("Failed to load network relations from database");
+        db_manager->Cleanup();
+        pthread_mutex_unlock(&relations_mutex_);
         return false;
     }
     
     initialized_ = true;
-    LOG_INFO("NetworkManager initialized successfully with %zu network relations", GetRelationCount());
+    size_t count = network_relations_.size();
+    pthread_mutex_unlock(&relations_mutex_);
     
+    LOG_INFO("NetworkManager initialized successfully with %zu network relations", count);
     return true;
 }
 
@@ -40,47 +58,50 @@ bool NetworkManager::LoadNetworkRelations() {
     LOG_INFO("Loading network relations from database...");
     
     NetworkRelationMap temp_relations;
+    DbManager* db_manager = DbManager::GetInstance();
     
-    if (!mysql_connector_.GetNetworkRelations(temp_relations)) {
-        LOG_ERROR("Failed to get network relations from database: %s", mysql_connector_.GetLastError());
+    if (!db_manager->LoadNetworkRelations(temp_relations)) {
+        LOG_ERROR("Failed to get network relations from database");
         return false;
     }
     
-    // 线程安全地更新关系表
-    {
-        std::lock_guard<std::mutex> lock(relations_mutex_);
-        network_relations_ = temp_relations;
-    }
+    pthread_mutex_lock(&relations_mutex_);
+    network_relations_ = temp_relations;
+    size_t relation_count = network_relations_.size();
+    pthread_mutex_unlock(&relations_mutex_);
     
-    LOG_INFO("Successfully loaded %zu network relations", temp_relations.size());
+    LOG_INFO("Successfully loaded %zu network relations", relation_count);
     
     // 输出前几个关系作为示例
     size_t count = 0;
-    for (const auto& relation : temp_relations) {
-        if (count < 5) {  // 只显示前5个
-            LOG_INFO("  - IP: %s -> Label: %s", relation.first.c_str(), relation.second.c_str());
-        }
+    pthread_mutex_lock(&relations_mutex_);
+    for (NetworkRelationMap::const_iterator it = network_relations_.begin(); 
+         it != network_relations_.end() && count < 5; ++it) {
+        LOG_INFO("  - IP: %s -> Label: %s", it->first.c_str(), it->second.c_str());
         count++;
     }
+    pthread_mutex_unlock(&relations_mutex_);
     
-    if (temp_relations.size() > 5) {
-        LOG_INFO("  ... and %zu more relations", temp_relations.size() - 5);
+    if (relation_count > 5) {
+        LOG_INFO("  ... and %zu more relations", relation_count - 5);
     }
     
     return true;
 }
 
 std::string NetworkManager::GetLabelByIP(const std::string& ip) {
-    std::lock_guard<std::mutex> lock(relations_mutex_);
+    pthread_mutex_lock(&relations_mutex_);
+    NetworkRelationMap::const_iterator it = network_relations_.find(ip);
+    std::string label = (it != network_relations_.end()) ? it->second : "";
+    pthread_mutex_unlock(&relations_mutex_);
     
-    auto it = network_relations_.find(ip);
-    if (it != network_relations_.end()) {
-        LOG_DEBUG("Found label '%s' for IP '%s'", it->second.c_str(), ip.c_str());
-        return it->second;
+    if (!label.empty()) {
+        LOG_DEBUG("Found label '%s' for IP '%s'", label.c_str(), ip.c_str());
     } else {
         LOG_DEBUG("No label found for IP '%s', using default", ip.c_str());
-        return "";  // 返回空字符串表示未找到
     }
+    
+    return label;
 }
 
 std::string NetworkManager::GetLabelByIP(const char* ip) {
@@ -92,12 +113,14 @@ std::string NetworkManager::GetLabelByIP(const char* ip) {
 }
 
 bool NetworkManager::HasIP(const std::string& ip) {
-    std::lock_guard<std::mutex> lock(relations_mutex_);
-    return network_relations_.find(ip) != network_relations_.end();
+    pthread_mutex_lock(&relations_mutex_);
+    bool exists = (network_relations_.find(ip) != network_relations_.end());
+    pthread_mutex_unlock(&relations_mutex_);
+    return exists;
 }
 
 const NetworkRelationMap& NetworkManager::GetAllRelations() const {
-    std::lock_guard<std::mutex> lock(relations_mutex_);
+    // 注意：调用者需要自行确保线程安全
     return network_relations_;
 }
 
@@ -107,19 +130,23 @@ bool NetworkManager::ReloadNetworkRelations() {
 }
 
 size_t NetworkManager::GetRelationCount() const {
-    std::lock_guard<std::mutex> lock(relations_mutex_);
-    return network_relations_.size();
+    pthread_mutex_lock(&relations_mutex_);
+    size_t count = network_relations_.size();
+    pthread_mutex_unlock(&relations_mutex_);
+    return count;
 }
 
 void NetworkManager::Cleanup() {
+    pthread_mutex_lock(&relations_mutex_);
+    
     if (initialized_) {
         LOG_INFO("Cleaning up NetworkManager");
-        mysql_connector_.Disconnect();
-        initialized_ = false;
-        
-        std::lock_guard<std::mutex> lock(relations_mutex_);
+        DbManager* db_manager = DbManager::GetInstance();
+        db_manager->Cleanup();
         network_relations_.clear();
-        
+        initialized_ = false;
         LOG_INFO("NetworkManager cleanup completed");
     }
-} 
+    
+    pthread_mutex_unlock(&relations_mutex_);
+}

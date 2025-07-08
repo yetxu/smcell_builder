@@ -2,6 +2,7 @@
 #define PUBLISHER_H_
 #include<pthread.h>
 #include<map>
+#include<vector>
 #include<stdint.h>
 #include<sys/time.h>
 #include"utils.h"

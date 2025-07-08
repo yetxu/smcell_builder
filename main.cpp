@@ -7,7 +7,6 @@
 #define LOG_FILE "pub_video.log"
 using namespace std;
 
-Logger g_logger;
 Parameter gParameter;
 int main(int argc, char* argv[]){
 

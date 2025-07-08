@@ -2,16 +2,16 @@
 #include "logger.h"
 #include <cstring>
 
-DbManager* DbManager::instance_ = nullptr;
+DbManager* DbManager::instance_ = NULL;
 
 DbManager* DbManager::GetInstance() {
-    if (instance_ == nullptr) {
+    if (instance_ == NULL) {
         instance_ = new DbManager();
     }
     return instance_;
 }
 
-DbManager::DbManager() : mysql_conn_(nullptr), is_connected_(false) {
+DbManager::DbManager() : mysql_conn_(NULL), is_connected_(false) {
 }
 
 DbManager::~DbManager() {
@@ -40,7 +40,7 @@ bool DbManager::Initialize(const char* host, int port, const char* db_name,
     if (mysql_real_connect(mysql_conn_, host, user, password, db_name, port, NULL, 0) == NULL) {
         LOG_ERROR("Failed to connect to MySQL: %s", mysql_error(mysql_conn_));
         mysql_close(mysql_conn_);
-        mysql_conn_ = nullptr;
+        mysql_conn_ = NULL;
         return false;
     }
     
@@ -50,15 +50,15 @@ bool DbManager::Initialize(const char* host, int port, const char* db_name,
 }
 
 void DbManager::Cleanup() {
-    if (mysql_conn_ != nullptr) {
+    if (mysql_conn_ != NULL) {
         mysql_close(mysql_conn_);
-        mysql_conn_ = nullptr;
+        mysql_conn_ = NULL;
     }
     is_connected_ = false;
 }
 
 bool DbManager::LoadNetworkRelations(std::map<std::string,std::string>& relations) {
-    if (!is_connected_ || mysql_conn_ == nullptr) {
+    if (!is_connected_ || mysql_conn_ == NULL) {
         LOG_ERROR("Not connected to MySQL database");
         return false;
     }
@@ -96,3 +96,4 @@ bool DbManager::LoadNetworkRelations(std::map<std::string,std::string>& relation
     LOG_INFO("Loaded %zu network relations from database", relations.size());
     return true;
 }
+

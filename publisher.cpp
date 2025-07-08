@@ -180,9 +180,9 @@ void Publisher::RecvData() {
 		//printf("sleep_num = %d\n", sleep_num);
 		if (sleep_num) {
 			//printf("unlock\n");
-			pthread_mutex_lock(&mutex);
+			pthread_mutex_lock(&::mutex);
 			pthread_cond_signal(&cond);
-			pthread_mutex_unlock(&mutex);
+			pthread_mutex_unlock(&::mutex);
 		}
 
 		// 新增：解析包类型并处理
@@ -338,81 +338,77 @@ bool Publisher::BuildCellPacket(CellType cell_type, const void* packet_info, cha
 }
 
 // 新增：构建信令Cell包（491字节固定格式）
+// 修复 BuildSignalingCellPacket 函数定义
 bool Publisher::BuildSignalingCellPacket(const SignalingPacketInfo& info, char* cell_buffer) {
-	if (!cell_buffer) {
-		LOG_ERROR("Cell buffer is null");
-		return false;
-	}
+    if (!cell_buffer) {
+        LOG_ERROR("Cell buffer is null");
+        return false;
+    }
 
-	// 检查标签数量
-	if (info.labels.size() > 255) {
-		LOG_ERROR("Too many labels: %zu, maximum is 255", info.labels.size());
-		return false;
-	}
+    // 检查标签数量
+    if (info.labels.size() > 255) {
+        LOG_ERROR("Too many labels: %zu, maximum is 255", info.labels.size());
+        return false;
+    }
 
-	char* pos = cell_buffer;
+    char* pos = cell_buffer;
 
-	// 1. 安全控制头（11字节）
-	*(uint16_t*)pos = htons(info.security_level);  // 安全级别（2字节）
-	pos += 2;
-	*pos = 0x08;  // 业务类型（1字节）- 0x08（信令包）
-	pos += 1;
-	*(uint32_t*)pos = htonl(info.business_id);  // 业务ID（4字节）
-	pos += 4;
-	*pos = 0x00;  // 填充（1字节）
-	pos += 1;
-	pos += 3;  // 填充（3字节）
+    // 1. 安全控制头（11字节）
+    *(uint16_t*)pos = htons(info.security_level);  // 安全级别（2字节）
+    pos += 2;
+    *pos = 0x08;  // 业务类型（1字节）- 0x08（信令包）
+    pos += 1;
+    *(uint32_t*)pos = htonl(info.business_id);  // 业务ID（4字节）
+    pos += 4;
+    *pos = 0x00;  // 填充（1字节）
+    pos += 1;
+    pos += 3;  // 填充（3字节）
 
-	// 2. Header部分（7字节）
-	*pos = 0x08;  // 1字节 0x08
-	pos += 1;
-	*(uint32_t*)pos = htonl(info.business_id);  // 4字节 业务Id
-	pos += 4;
-	*pos = 0x00;  // 1字节 0x00
-	pos += 1;
+    // 2. Header部分（7字节）
+    *pos = 0x08;  // 1字节 0x08
+    pos += 1;
+    *(uint32_t*)pos = htonl(info.business_id);  // 4字节 业务Id
+    pos += 4;
+    *pos = 0x00;  // 1字节 0x00
+    pos += 1;
 
-	// 3. Data部分
-	*pos = 0x00;  // 1字节 占位
-	pos += 1;
+    // 3. Data部分
+    *pos = 0x00;  // 1字节 占位
+    pos += 1;
 
-	// 标记信息（2字节）- 前3位为001（信令包），后8位标签数量
-	uint16_t mark_info = 0x2000;  // 00100000 00000000 (前3位=001)
-	mark_info |= (info.labels.size() & 0xFF);  // 后8位=标签数量
-	*(uint16_t*)pos = htons(mark_info);
-	pos += 2;
+    // 标记信息（2字节）- 前3位为001（信令包），后8位标签数量
+    uint16_t mark_info = 0x2000;  // 00100000 00000000 (前3位=001)
+    mark_info |= (info.labels.size() & 0xFF);  // 后8位=标签数量
+    *(uint16_t*)pos = htons(mark_info);
+    pos += 2;
 
-	// 标签（每个标签2字节）
-	for (const auto& label : info.labels) {
-		uint16_t label_value = 0;
-		if (!label.empty()) {
-			try {
-				label_value = static_cast<uint16_t>(std::stoi(label));
-			} catch (const std::exception& e) {
-				LOG_WARN("Failed to convert label '%s' to number, using 0", label.c_str());
-				label_value = 0;
-			}
-		}
-		*(uint16_t*)pos = htons(label_value);
-		pos += 2;
-	}
+    // 标签（每个标签2字节）
+    for (size_t i = 0; i < info.labels.size(); ++i) {
+        uint16_t label_value = 0;
+        if (!info.labels[i].empty()) {
+            label_value = static_cast<uint16_t>(atoi(info.labels[i].c_str()));
+        }
+        *(uint16_t*)pos = htons(label_value);
+        pos += 2;
+    }
 
-	// Cell body - 插入sx站IP（4字节）
-	*(uint32_t*)pos = htonl(info.sx_ip);
-	pos += 4;
+    // Cell body - 插入sx站IP（4字节）
+    *(uint32_t*)pos = htonl(info.sx_ip);
+    pos += 4;
 
-	// 剩余部分补0
-	int remaining = cell_size_ - (pos - cell_buffer) - 2;  // 减去CRC16的2字节
-	if (remaining > 0) {
-		memset(pos, 0, remaining);
-		pos += remaining;
-	}
+    // 剩余部分补0
+    int remaining = cell_size_ - (pos - cell_buffer) - 2;  // 减去CRC16的2字节
+    if (remaining > 0) {
+        memset(pos, 0, remaining);
+        pos += remaining;
+    }
 
-	// CRC16校验（2字节）
-	uint16_t checksum = CRC_16(0, (uint8_t*)cell_buffer + 11, cell_size_ - 11 - 2);
-	*(uint16_t*)pos = htons(checksum);
+    // CRC16校验（2字节）
+    uint16_t checksum = CRC_16(0, (uint8_t*)cell_buffer + 11, cell_size_ - 11 - 2);
+    *(uint16_t*)pos = htons(checksum);
 
-	LOG_DEBUG("Built signaling cell with %zu labels for IP %u", info.labels.size(), info.sx_ip);
-	return true;
+    LOG_DEBUG("Built signaling cell with %zu labels for IP %u", info.labels.size(), info.sx_ip);
+    return true;
 }
 
 // 新增：构建数据Cell包（491字节固定格式）
@@ -526,7 +522,7 @@ bool Publisher::SendCell(const char* cell_buffer, int cell_size) {
 		return false;
 	}
 
-	int send_result = signaling_send_socket_->SendTo(cell_buffer, cell_size, target_addr_);
+	int send_result = signaling_send_socket_->SendTo(const_cast<char*>(cell_buffer), cell_size, target_addr_);
 	if (send_result > 0) {
 		LOG_INFO("Successfully sent cell to %s:%d", dst_ip_, dst_port_);
 		LOG_NETWORK("UDP_SEND_CELL", dst_ip_, dst_port_, send_result);
@@ -560,6 +556,7 @@ void Publisher::AddTransaction(uint32_t trans_id) {
 	cout << setw(20) << "pub_type " << pub_type_ << endl;
 	PubWorker* pub_worker = new PubWorker(pub_type_);
 	pub_worker->Init(trans_id, cell_size_, dst_port_, dst_ip_);
+	pub_worker->SetPublisher(this);
 	pub_worker->StartWork();
 	worker_map_[trans_id] = pub_worker;
 	LOG_INFO("Transaction ID %d added successfully", trans_id);

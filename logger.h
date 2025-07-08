@@ -98,6 +98,9 @@ private:
     unsigned long log_count_;
 };
 
+// 全局日志对象定义
+extern Logger g_logger;
+
 // 全局日志宏定义
 #define LOG_TRACE(format, ...) g_logger.LogTrace(__FILE__, __LINE__, format, ##__VA_ARGS__)
 #define LOG_DEBUG(format, ...) g_logger.LogDebug(__FILE__, __LINE__, format, ##__VA_ARGS__)

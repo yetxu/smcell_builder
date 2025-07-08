@@ -25,9 +25,6 @@ private:
     DbManager();
     ~DbManager();
     
-    // 禁止拷贝和赋值
-    DbManager(const DbManager&) = delete;
-    DbManager& operator=(const DbManager&) = delete;
 
     static DbManager* instance_;
     MYSQL* mysql_conn_;
@@ -35,3 +32,4 @@ private:
 };
 
 #endif // DB_MANAGER_H
+

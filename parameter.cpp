@@ -4,7 +4,7 @@
 #include"parameter.h"
 #include"json/reader.h"
 #include"json/writer.h"
-#include "mysql_connector.h"
+
 using namespace std;
 using namespace json;
 

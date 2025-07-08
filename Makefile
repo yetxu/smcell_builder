@@ -4,7 +4,7 @@ EXE = RadarPublisher
 
 LIBS = pthread mysqlclient
 
-LIBS_SEARCH_PATH =
+LIBS_SEARCH_PATH = /usr/lib/mysql
 INCLUDES =
 
 

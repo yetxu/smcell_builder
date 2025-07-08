@@ -297,3 +297,6 @@ const char* Logger::GetFileName(const char* file_path) {
     
     return file_path;
 }
+
+// 全局日志对象定义
+Logger g_logger;
