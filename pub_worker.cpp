@@ -681,7 +681,7 @@ uint16_t PubWorker::GetDeviceLabel(uint16_t dev_id) {
     char source_ip_str[16];
     snprintf(source_ip_str, sizeof(source_ip_str), "%u", dev_id);
     std::string source_ip = source_ip_str;
-    std::string label_str = g_network_manager.GetLabelByIP(source_ip);
+    std::string label_str = NetworkManager::GetInstance().GetLabelByIP(source_ip);
     
     if (label_str.empty()) {
         LOG_WARN("No label found for device %d", dev_id);

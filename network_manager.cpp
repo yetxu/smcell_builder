@@ -2,6 +2,9 @@
 #include "logger.h"
 #include <iostream>
 
+NetworkManager* NetworkManager::instance_ = NULL;
+pthread_mutex_t NetworkManager::instance_mutex_ = PTHREAD_MUTEX_INITIALIZER;
+
 NetworkManager::NetworkManager() : 
     initialized_(false),
     db_manager_(NULL) {
@@ -13,6 +16,14 @@ NetworkManager::~NetworkManager() {
     pthread_mutex_destroy(&relations_mutex_);
 }
 
+NetworkManager* NetworkManager::GetInstance() {
+    pthread_mutex_lock(&instance_mutex_);
+    if (!instance_) {
+        instance_ = new NetworkManager();
+    }
+    pthread_mutex_unlock(&instance_mutex_);
+    return instance_;
+}
 
 bool NetworkManager::Initialize(const char* host, const char* user, 
                               const char* password, const char* database, 

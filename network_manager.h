@@ -15,14 +15,14 @@ class NetworkManager {
     NetworkRelationMap network_relations_;
     DbManager* db_manager_;
 
+    static NetworkManager* instance_;
+    static pthread_mutex_t instance_mutex_;
+
     NetworkManager(const NetworkManager&);
     NetworkManager& operator=(const NetworkManager&);
 
 public:
-    static NetworkManager& GetInstance() {
-        static NetworkManager instance;
-        return instance;
-    }
+    static NetworkManager* GetInstance();
     
     bool Initialize(const char* host, const char* user, 
                    const char* password, const char* database, 
@@ -43,6 +43,5 @@ private:
     ~NetworkManager();
 };
 
-#define g_network_manager NetworkManager::GetInstance()
 
 #endif // NETWORK_MANAGER_H_

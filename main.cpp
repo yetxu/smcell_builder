@@ -19,19 +19,22 @@ int main(int argc, char* argv[]){
     
     // 初始化网络管理器并加载组网关系表
     LOG_INFO("Initializing network manager...");
-    if (!g_network_manager.Initialize(gParameter.db_host, gParameter.db_user, 
+    if (!NetworkManager::GetInstance()->Initialize(gParameter.db_host, gParameter.db_user, 
                                     gParameter.db_pass, gParameter.db_name, 
                                     gParameter.db_port)) {
         LOG_ERROR("Failed to initialize network manager");
-        cout << "Network manager initialization failed" << endl;
         return -1;
     }
     LOG_INFO("Network manager initialized successfully");
     
+    LOG_INFO("Before Publisher constructor");
     Publisher publisher;
-    if (! publisher.Init(&gParameter)){
+    LOG_INFO("After Publisher constructor");
+    LOG_INFO("Before Publisher.Init");
+    bool init_result = publisher.Init(&gParameter);
+    LOG_INFO("After Publisher.Init, result=%d", init_result);
+    if (!init_result) {
         LOG_ERROR("Publisher initialization failed");
-        cout << "Publisher init failed" << endl;
         return -1;
     }
     LOG_INFO("Publisher initialized successfully");
