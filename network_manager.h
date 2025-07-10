@@ -29,6 +29,7 @@ public:
                    unsigned int port = 3306);
     
     bool LoadNetworkRelations();
+    bool LoadNetworkRelations_NoLock();
     std::string GetLabelByIP(const std::string& ip);
     std::string GetLabelByIP(const char* ip);
     bool HasIP(const std::string& ip);

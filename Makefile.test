@@ -1,0 +1,181 @@
+# SMCellBuilder 测试套件 Makefile
+# 用于编译和运行项目测试
+
+.PHONY: test clean test-unit test-integration test-performance
+
+# 编译器设置
+CC = g++
+CFLAGS = -std=c++11 -Wall -Wextra -O2 -g
+INCLUDES = -I.
+LIBS = -lpthread -lmysqlclient
+
+# 测试相关文件
+TEST_SRC = test_smcellbuilder.cpp
+TEST_OBJ = $(TEST_SRC:.cpp=.o)
+TEST_EXE = test_smcellbuilder
+
+# 项目源文件（测试需要）
+PROJECT_SRCS = parameter.cpp logger.cpp utils.cpp udp_socket.cpp fifo_queue.cpp \
+               CRC_16.cpp network_manager.cpp publisher.cpp pub_worker.cpp \
+               comm_socket.cpp mutex.cpp db_manager.cpp
+PROJECT_OBJS = $(PROJECT_SRCS:.cpp=.o)
+
+# 默认目标
+all: test
+
+# 编译测试程序
+test: $(TEST_EXE)
+
+$(TEST_EXE): $(TEST_OBJ) $(PROJECT_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+	@echo "测试程序编译完成: $(TEST_EXE)"
+
+# 编译测试源文件
+$(TEST_OBJ): $(TEST_SRC)
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# 编译项目源文件
+%.o: %.cpp
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# 运行所有测试
+run-test: test
+	@echo "=== 运行 SMCellBuilder 测试套件 ==="
+	./$(TEST_EXE)
+
+# 运行单元测试
+test-unit: test
+	@echo "=== 运行单元测试 ==="
+	./$(TEST_EXE) --unit
+
+# 运行集成测试
+test-integration: test
+	@echo "=== 运行集成测试 ==="
+	./$(TEST_EXE) --integration
+
+# 运行性能测试
+test-performance: test
+	@echo "=== 运行性能测试 ==="
+	./$(TEST_EXE) --performance
+
+# 生成测试报告
+test-report: test
+	@echo "=== 生成测试报告 ==="
+	./$(TEST_EXE) > test_report.txt 2>&1
+	@echo "测试报告已生成: test_report.txt"
+
+# 清理编译文件
+clean:
+	rm -f $(TEST_OBJ) $(PROJECT_OBJS) $(TEST_EXE)
+	rm -f test_report.txt
+	rm -f test_*.log
+	rm -f test_*.json
+	@echo "清理完成"
+
+# 安装测试依赖
+install-deps:
+	@echo "=== 安装测试依赖 ==="
+	@echo "请确保已安装以下依赖:"
+	@echo "  - g++ (支持C++11)"
+	@echo "  - libpthread-dev"
+	@echo "  - libmysqlclient-dev"
+	@echo "  - MySQL服务器 (用于网络管理器测试)"
+
+# 检查测试环境
+check-env:
+	@echo "=== 检查测试环境 ==="
+	@which g++ > /dev/null && echo "✓ g++ 已安装" || echo "✗ g++ 未安装"
+	@which mysql > /dev/null && echo "✓ MySQL 已安装" || echo "✗ MySQL 未安装"
+	@echo "测试环境检查完成"
+
+# 帮助信息
+help:
+	@echo "SMCellBuilder 测试套件 Makefile 使用说明:"
+	@echo ""
+	@echo "可用目标:"
+	@echo "  test          - 编译测试程序"
+	@echo "  run-test      - 编译并运行所有测试"
+	@echo "  test-unit     - 运行单元测试"
+	@echo "  test-integration - 运行集成测试"
+	@echo "  test-performance - 运行性能测试"
+	@echo "  test-report   - 生成测试报告"
+	@echo "  clean         - 清理编译文件"
+	@echo "  install-deps  - 显示依赖安装说明"
+	@echo "  check-env     - 检查测试环境"
+	@echo "  help          - 显示此帮助信息"
+	@echo ""
+	@echo "使用示例:"
+	@echo "  make run-test     # 运行所有测试"
+	@echo "  make test-report  # 生成测试报告"
+	@echo "  make clean        # 清理文件"
+
+# 调试模式编译
+debug: CFLAGS += -DDEBUG -O0
+debug: test
+
+# 发布模式编译
+release: CFLAGS += -DNDEBUG -O3
+release: test
+
+# 覆盖率测试（需要gcov）
+coverage: CFLAGS += -fprofile-arcs -ftest-coverage
+coverage: LIBS += -lgcov
+coverage: test
+	@echo "覆盖率测试编译完成，运行测试后使用 gcov 查看覆盖率"
+
+# 内存检查（需要valgrind）
+memcheck: test
+	@echo "=== 运行内存检查 ==="
+	valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all ./$(TEST_EXE)
+
+# 静态代码分析（需要cppcheck）
+static-analysis:
+	@echo "=== 静态代码分析 ==="
+	cppcheck --enable=all --std=c++11 *.cpp *.h 2> static_analysis.txt
+	@echo "静态分析结果已保存到 static_analysis.txt"
+
+# 代码格式化（需要clang-format）
+format:
+	@echo "=== 代码格式化 ==="
+	clang-format -i *.cpp *.h
+	@echo "代码格式化完成"
+
+# 创建测试数据
+create-test-data:
+	@echo "=== 创建测试数据 ==="
+	@echo "创建测试配置文件..."
+	@echo '{"cell_length": 491, "radar_recv_port": 132001}' > test_config.json
+	@echo "创建测试映射文件..."
+	@echo '{"sumnum": 2, "devID1": 1001, "devLevel1": 5}' > test_map.json
+	@echo "测试数据创建完成"
+
+# 运行特定测试
+test-specific: test
+	@echo "请输入要运行的测试名称 (例如: TestParameterLoading):"
+	@read test_name; ./$(TEST_EXE) --test $$test_name
+
+# 连续运行测试（用于压力测试）
+stress-test: test
+	@echo "=== 压力测试 ==="
+	@echo "运行测试 10 次..."
+	@for i in {1..10}; do \
+		echo "第 $$i 次运行:"; \
+		./$(TEST_EXE) > /dev/null 2>&1; \
+		if [ $$? -eq 0 ]; then \
+			echo "✓ 通过"; \
+		else \
+			echo "✗ 失败"; \
+		fi; \
+	done
+	@echo "压力测试完成"
+
+# 显示测试统计
+test-stats:
+	@echo "=== 测试统计 ==="
+	@if [ -f test_report.txt ]; then \
+		echo "总测试数: $$(grep -c 'TEST_ASSERT' test_report.txt || echo 0)"; \
+		echo "通过数: $$(grep -c '✓' test_report.txt || echo 0)"; \
+		echo "失败数: $$(grep -c '✗' test_report.txt || echo 0)"; \
+	else \
+		echo "未找到测试报告，请先运行 make test-report"; \
+	fi 

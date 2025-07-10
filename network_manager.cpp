@@ -50,7 +50,7 @@ bool NetworkManager::Initialize(const char* host, const char* user,
     
     LOG_INFO("Successfully connected to MySQL database");
     
-    if (!LoadNetworkRelations()) {
+    if (!LoadNetworkRelations_NoLock()) {
         LOG_ERROR("Failed to load network relations from database");
         db_manager->Cleanup();
         pthread_mutex_unlock(&relations_mutex_);
@@ -66,37 +66,33 @@ bool NetworkManager::Initialize(const char* host, const char* user,
 }
 
 bool NetworkManager::LoadNetworkRelations() {
+    pthread_mutex_lock(&relations_mutex_);
+    bool result = LoadNetworkRelations_NoLock();
+    pthread_mutex_unlock(&relations_mutex_);
+    return result;
+}
+
+bool NetworkManager::LoadNetworkRelations_NoLock() {
     LOG_INFO("Loading network relations from database...");
-    
     NetworkRelationMap temp_relations;
     DbManager* db_manager = DbManager::GetInstance();
-    
     if (!db_manager->LoadNetworkRelations(temp_relations)) {
         LOG_ERROR("Failed to get network relations from database");
         return false;
     }
-    
-    pthread_mutex_lock(&relations_mutex_);
     network_relations_ = temp_relations;
     size_t relation_count = network_relations_.size();
-    pthread_mutex_unlock(&relations_mutex_);
-    
     LOG_INFO("Successfully loaded %zu network relations", relation_count);
-    
     // 输出前几个关系作为示例
     size_t count = 0;
-    pthread_mutex_lock(&relations_mutex_);
-    for (NetworkRelationMap::const_iterator it = network_relations_.begin(); 
+    for (NetworkRelationMap::const_iterator it = network_relations_.begin();
          it != network_relations_.end() && count < 5; ++it) {
         LOG_INFO("  - IP: %s -> Label: %s", it->first.c_str(), it->second.c_str());
         count++;
     }
-    pthread_mutex_unlock(&relations_mutex_);
-    
     if (relation_count > 5) {
         LOG_INFO("  ... and %zu more relations", relation_count - 5);
     }
-    
     return true;
 }
 
