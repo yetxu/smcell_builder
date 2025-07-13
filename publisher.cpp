@@ -249,14 +249,14 @@ void Publisher::ProcessRegisterPacket(char* packet, int len) {
 	uint8_t subtype = (uint8_t)packet[2];
 	switch (subtype) {
 		case 0x01:
-			HandleRegisterCellResponse(packet, len);
+			HandleRegisterCellResponse(packet, len, subtype);
 			break;
 		case 0x02:
 			HandleReloadNetworkFromDB();
 			break;
 		case 0x03:
 			HandleReloadNetworkFromDB();
-			HandleRegisterCellResponse(packet, len);
+			HandleRegisterCellResponse(packet, len, subtype);
 			break;
 		default:
 			LOG_WARN("Unknown register packet subtype: 0x%02X", subtype);
@@ -264,14 +264,15 @@ void Publisher::ProcessRegisterPacket(char* packet, int len) {
 	}
 }
 
-void Publisher::HandleRegisterCellResponse(char* packet, int len) {
-	// 注册信令包格式：1字节标识 + 1字节子类型 + 4字节sx站IP
+void Publisher::HandleRegisterCellResponse(char* packet, int len,uint8_t subtype) {
+	// 注册信令包格式：1字节标识 + 1字节子类型 + 4字节sx站IP + label值
 	const int REGISTER_PACKET_MIN_LEN = 6;
 	if (len < REGISTER_PACKET_MIN_LEN) {
 		LOG_ERROR("Register cell response packet too short: %d bytes, expected at least %d", len, REGISTER_PACKET_MIN_LEN);
 		return;
 	}
-	// 提取sx站IP（4字节，从packet[2]开始）
+	
+	// 提取sx站IP（4字节，从packet[3]开始）
 	uint32_t sx_ip = *(uint32_t*)(packet + 3);
 	LOG_INFO("Processing register cell response for sx station IP: %u.%u.%u.%u", 
 		sx_ip & 0xFF, (sx_ip >> 8) & 0xFF, (sx_ip >> 16) & 0xFF, (sx_ip >> 24) & 0xFF);
@@ -281,14 +282,44 @@ void Publisher::HandleRegisterCellResponse(char* packet, int len) {
 	snprintf(ip_str, sizeof(ip_str), "%u.%u.%u.%u", 
 		sx_ip & 0xFF, (sx_ip >> 8) & 0xFF, (sx_ip >> 16) & 0xFF, (sx_ip >> 24) & 0xFF);
 
-	// 查询该IP对应的标签列表
+	// 根据subtype决定label值的来源
 	std::vector<std::string> labels;
-	std::string label = NetworkManager::GetInstance()->GetLabelByIP(ip_str);
-	if (!label.empty()) {
-		labels.push_back(label);
-		LOG_INFO("Found label '%s' for IP %s", label.c_str(), ip_str);
+	
+	if (subtype == 0x01) {
+		// subtype = 0x01：直接使用packet包中的label值
+		// 从packet[7]开始解析label值（每个label占2字节）
+		int label_start_pos = 7;
+		int remaining_len = len - label_start_pos;
+		
+		if (remaining_len > 0 && remaining_len % 2 == 0) {
+			int label_count = remaining_len / 2;
+			LOG_INFO("Found %d labels in packet for IP %s", label_count, ip_str);
+			
+			for (int i = 0; i < label_count; ++i) {
+				uint16_t label_value = *(uint16_t*)(packet + label_start_pos + i * 2);
+				label_value = ntohs(label_value); // 网络字节序转换
+				
+				char label_str[16];
+				snprintf(label_str, sizeof(label_str), "%u", label_value);
+				labels.push_back(std::string(label_str));
+				
+				LOG_DEBUG("Extracted label %u from packet for IP %s", label_value, ip_str);
+			}
+		} else {
+			LOG_WARN("Invalid label data length in packet for IP %s", ip_str);
+		}
+	} else if (subtype == 0x03) {
+		// subtype = 0x03：从数据库加载label值
+		std::string label = NetworkManager::GetInstance()->GetLabelByIP(ip_str);
+		if (!label.empty()) {
+			labels.push_back(label);
+			LOG_INFO("Found label '%s' from database for IP %s", label.c_str(), ip_str);
+		} else {
+			LOG_WARN("No label found in database for IP %s", ip_str);
+		}
 	} else {
-		LOG_WARN("No label found for IP %s", ip_str);
+		LOG_WARN("Unknown subtype 0x%02X for register packet", subtype);
+		return;
 	}
 
 	// 构建信令Cell包
@@ -302,6 +333,7 @@ void Publisher::HandleRegisterCellResponse(char* packet, int len) {
 	if (BuildCellPacket(CELL_TYPE_SIGNALING, &sig_info, cell_buffer)) {
 		// 发送信令Cell包
 		SendCell(cell_buffer, cell_size_);
+		LOG_INFO("Successfully sent signaling cell with %zu labels for IP %s", labels.size(), ip_str);
 	} else {
 		LOG_ERROR("Failed to build cell for IP %s", ip_str);
 	}

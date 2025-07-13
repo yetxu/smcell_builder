@@ -136,7 +136,7 @@ public:
 //	PrintfNum *printfNum;
 
 private:
-	void HandleRegisterCellResponse(char* packet, int len);
+	void HandleRegisterCellResponse(char* packet, int len, uint8_t subtype);
 	void HandleReloadNetworkFromDB();
 };
 #endif
