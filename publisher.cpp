@@ -246,7 +246,7 @@ void Publisher::ProcessRegisterPacket(char* packet, int len) {
 		LOG_ERROR("Register packet too short for subtype");
 		return;
 	}
-	uint8_t subtype = (uint8_t)packet[1];
+	uint8_t subtype = (uint8_t)packet[2];
 	switch (subtype) {
 		case 0x01:
 			HandleRegisterCellResponse(packet, len);
@@ -272,18 +272,18 @@ void Publisher::HandleRegisterCellResponse(char* packet, int len) {
 		return;
 	}
 	// 提取sx站IP（4字节，从packet[2]开始）
-	uint32_t sx_ip = *(uint32_t*)(packet + 2);
+	uint32_t sx_ip = *(uint32_t*)(packet + 3);
 	LOG_INFO("Processing register cell response for sx station IP: %u.%u.%u.%u", 
-		(sx_ip >> 24) & 0xFF, (sx_ip >> 16) & 0xFF, (sx_ip >> 8) & 0xFF, sx_ip & 0xFF);
+		sx_ip & 0xFF, (sx_ip >> 8) & 0xFF, (sx_ip >> 16) & 0xFF, (sx_ip >> 24) & 0xFF);
 
 	// 将IP转换为字符串格式
 	char ip_str[16];
 	snprintf(ip_str, sizeof(ip_str), "%u.%u.%u.%u", 
-		(sx_ip >> 24) & 0xFF, (sx_ip >> 16) & 0xFF, (sx_ip >> 8) & 0xFF, sx_ip & 0xFF);
+		sx_ip & 0xFF, (sx_ip >> 8) & 0xFF, (sx_ip >> 16) & 0xFF, (sx_ip >> 24) & 0xFF);
 
 	// 查询该IP对应的标签列表
 	std::vector<std::string> labels;
-	std::string label = g_network_manager.GetLabelByIP(ip_str);
+	std::string label = NetworkManager::GetInstance()->GetLabelByIP(ip_str);
 	if (!label.empty()) {
 		labels.push_back(label);
 		LOG_INFO("Found label '%s' for IP %s", label.c_str(), ip_str);
@@ -309,7 +309,7 @@ void Publisher::HandleRegisterCellResponse(char* packet, int len) {
 
 void Publisher::HandleReloadNetworkFromDB() {
 	LOG_INFO("Reloading network relations from database...");
-	if (g_network_manager.ReloadNetworkRelations()) {
+	if (NetworkManager::GetInstance()->ReloadNetworkRelations()) {
 		LOG_INFO("Network relations reloaded successfully from database");
 	} else {
 		LOG_ERROR("Failed to reload network relations from database");
@@ -399,7 +399,7 @@ bool Publisher::BuildSignalingCellPacket(const SignalingPacketInfo& info, char* 
     // 剩余部分补0
     int remaining = cell_size_ - (pos - cell_buffer) - 2;  // 减去CRC16的2字节
     if (remaining > 0) {
-        memset(pos, 0, remaining);
+        memset(pos, 3, remaining);
         pos += remaining;
     }
 
