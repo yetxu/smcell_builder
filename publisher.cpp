@@ -58,7 +58,7 @@ Publisher::~Publisher() {
 bool Publisher::Init(Parameter* parameter) {
 
 	gettimeofday(&start_time_, NULL);
-	pub_type_ = VIDEO_PUB;
+	pub_type_ = MSG_PUB;
 	int recv_port = parameter->radar_recv_port; //32001
 	int com_bind_port = parameter->inner_radar_port; //32002
 	dst_port_ = parameter->dst_port;
@@ -97,7 +97,7 @@ bool Publisher::Init(Parameter* parameter) {
 	target_addr_.sin_port = htons(dst_port_);
 	target_addr_.sin_addr.s_addr = inet_addr(dst_ip_);
 
-	AddTransaction(60000);   // temporary  video transaction id 10000
+	AddTransaction(60000);   // tempora transaction id 60000 
 	LOG_INFO("Publisher initialization completed successfully");
 	return true;
 }

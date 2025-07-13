@@ -97,15 +97,7 @@ public:
 		MAX_IP_SIZE = 16
 	};
 
-	/*enum{
-	 PUB_CENTER_SERVER = 0,
-	 ACCESS_SERVER = 1,
-	 VIDEO_PUB_SERVER = 2,
-	 MSG_PUB_SERVER = 3,
-	 FILE_PUB_SERVER = 4,
-	 FILE_STORE_SERVER = 5,
-	 MONITOR_SERVER = 6
-	 };*/
+
 	enum {
 		SET_CELL_SIZE = 0,
 		GET_CELL_SIZE = 1,
@@ -122,7 +114,7 @@ public:
 	pthread_t recv_thread_;
 	pthread_t inner_com_thread_;
 
-	int pub_type_; //denote that this publisher is video or msg pub
+	int pub_type_; //denote that this publisher is  msg pub
 	int dst_port_;
 	char dst_ip_[MAX_IP_SIZE];
 	int cell_size_;

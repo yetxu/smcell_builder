@@ -19,27 +19,9 @@ extern pthread_mutex_t mutex;
 
 // 发布类型
 enum PubType {
-	FILE_PUB = 1, MSG_PUB = 2, IPSTREAM_PUB = 3, VIDEO_PUB = 4
+	MSG_PUB = 0
 };
 
-// 消息包类型枚举 - 使用cell_factory.h中定义的SmFlag
-// enum MsgPacketType {
-// 	MSG_HEAD = 0,
-// 	MSG_BODY = 1,
-// 	MSG_TAIL = 2,
-// 	COMPLETE_MSG = 3
-// };
-
-// 视频Cell类型枚举 - 使用cell_factory.h中定义的VideoCellType
-// enum VideoCellType {
-// 	CELL_TYPE_HEAD = 0,
-// 	CELL_TYPE_BODY = 1,
-// 	CELL_TYPE_TAIL_ONLY = 2,
-// 	CELL_TYPE_HEAD_TAIL_ONLY = 3,
-// 	CELL_TYPE_TAIL_ANTH = 4,
-// 	CELL_TYPE_TAIL_ANTH_TAIL = 5,
-// 	CELL_TYPE_UNKNOWN = 6
-// };
 
 // 构建类型枚举
 enum BuildType {
@@ -100,7 +82,7 @@ public:
 private:
 	// 主处理线程
 	void ProcsMsg();
-	void ProcsVideo();
+
 	void StopProcThrd();
 
 	// 初始化相关
@@ -122,20 +104,6 @@ private:
 	void SendMessageCell(char* cell_buffer, bool& has_data_in_cell);
 	uint16_t CalculateRemainingSpace(char* cell_buffer);
 
-	// 视频处理相关
-	void InitializeVideoCellBuffer(char* cell_buffer);
-	void ResetVideoCellBuffer(char* cell_buffer, int head_len);
-	bool GetNextVideoPacket(char* data_buf, uint16_t& left_pack_size, char*& data_pos);
-	void ProcessRemainingVideoPacket(char* cell_buffer, char*& data_pos, 
-	                               uint16_t& left_pack_size, bool& has_data_in_cell);
-	void ProcessVideoPacket(char* cell_buffer, char*& data_pos, 
-	                      uint16_t& left_pack_size, bool& has_data_in_cell);
-	void ProcessCombinedVideoPackets(char* cell_buffer, char*& data_pos, 
-	                               uint16_t& left_pack_size, bool& has_data_in_cell);
-	void WaitForMoreData();
-	void SendVideoCell(char* cell_buffer, bool& has_data_in_cell);
-	uint16_t CalculateVideoRemainingSpace(char* cell_buffer);
-
 	// Cell包构建与发送
 	void CheckAndSndCell(char* cell_buffer, bool* has_data_in_cell);
 	void SendCellWithNewProcess(char* cell_buffer, uint16_t devID);
@@ -148,7 +116,6 @@ private:
 
 	// 消息/视频分包
 	int PackCompleteMsgPack(int msg_type, char* cell_buffer, char*& cell_pos, bool* has_data_in_cell);
-	void PackVideoCell(char* cell_buffer, int cell_type, int build_type, uint16_t data_len, char*& cell_pos, char*& data_pos, uint16_t* left_pack_size);
 	bool PackMsgPacketHead(int pack_part_type, int msg_type, int len, uint16_t* frame_head);
 
 	// 统计信息

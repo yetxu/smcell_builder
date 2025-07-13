@@ -396,153 +396,6 @@ void PubWorker::ProcessNewMessagePacket(char* cell_buffer, char*& data_pos,
     }
 }
 
-// ==================== 视频处理 ====================
-
-void PubWorker::ProcsVideo() {
-    const int kMaxBufSize = MAX_BUFFER_SIZE;
-    char data_buf[kMaxBufSize];
-    char* data_pos;
-    uint16_t data_len;
-    const int kCellHeadLen = 17;
-    char cell_buffer[MAX_CELL_SIZE];
-    
-    // 初始化Cell缓冲区
-    InitializeVideoCellBuffer(cell_buffer);
-    
-    uint16_t next_pack_size;
-    uint16_t left_pack_size = 0;
-    bool has_data_in_cell = false;
-    int cell_type;
-    
-    LOG_INFO("Starting video processing loop");
-    
-    while (!work_over_) {
-        // 重置Cell缓冲区
-        ResetVideoCellBuffer(cell_buffer, kCellHeadLen);
-        
-        // 处理剩余数据包
-        if (left_pack_size > 0) {
-            ProcessRemainingVideoPacket(cell_buffer, data_pos, left_pack_size, has_data_in_cell);
-            continue;
-        }
-        
-        // 获取新数据包
-        if (!GetNextVideoPacket(data_buf, left_pack_size, data_pos)) {
-            continue;
-        }
-        
-        // 处理视频数据包
-        ProcessVideoPacket(cell_buffer, data_pos, left_pack_size, has_data_in_cell);
-    }
-    
-    LOG_INFO("Video processing loop ended");
-}
-
-void PubWorker::InitializeVideoCellBuffer(char* cell_buffer) {
-    char* cell_pos = cell_buffer + SECURITY_LEV_POS;
-    *(uint16_t*)cell_pos = security_level_;
-    cell_pos += 2;
-    *(uint8_t*)cell_pos = RADAR_SERVICE;
-    cell_pos += 1;
-    *(uint32_t*)cell_pos = trans_id_;
-    cell_pos += 4;
-    *(uint8_t*)cell_pos = 0;
-    cell_pos += 1;
-    *(uint8_t*)cell_pos = RADAR_SERVICE;
-}
-
-void PubWorker::ResetVideoCellBuffer(char* cell_buffer, int head_len) {
-    char* cell_pos = cell_buffer + head_len;
-    memset(cell_pos, 0, cell_size_ - head_len);
-    *(uint8_t*)cell_pos = RADAR_SERVICE;
-    cell_pos += 6;
-}
-
-bool PubWorker::GetNextVideoPacket(char* data_buf, uint16_t& left_pack_size, char*& data_pos) {
-    fifo_queue_->PopPacket(data_buf, &left_pack_size);
-    data_pos = data_buf;
-    return left_pack_size > 0;
-}
-
-void PubWorker::ProcessRemainingVideoPacket(char* cell_buffer, char*& data_pos, 
-                                          uint16_t& left_pack_size, bool& has_data_in_cell) {
-    char* cell_pos = cell_buffer + 17; // 跳过头部
-    uint16_t part_size = CalculateVideoRemainingSpace(cell_buffer);
-    
-    if (part_size >= left_pack_size) {
-        // 完整包
-        PackVideoCell(cell_buffer, CELL_TYPE_TAIL_ONLY, BUILD_WHOLE, 
-                     left_pack_size, cell_pos, data_pos, &left_pack_size);
-        has_data_in_cell = true;
-        left_pack_size = 0;
-    } else {
-        // 部分包
-        PackVideoCell(cell_buffer, CELL_TYPE_BODY, BUILD_WHOLE, 
-                     part_size, cell_pos, data_pos, &left_pack_size);
-        has_data_in_cell = true;
-        left_pack_size -= part_size;
-    }
-    
-    SendVideoCell(cell_buffer, has_data_in_cell);
-}
-
-void PubWorker::ProcessVideoPacket(char* cell_buffer, char*& data_pos, 
-                                 uint16_t& left_pack_size, bool& has_data_in_cell) {
-    char* cell_pos = cell_buffer + 17; // 跳过头部
-    uint16_t part_size = CalculateVideoRemainingSpace(cell_buffer);
-    
-    if (part_size - left_pack_size >= 0 && part_size - left_pack_size < MIN_SIZE_TO_HOLD_NEXT_PACK) {
-        // 单个包
-        PackVideoCell(cell_buffer, CELL_TYPE_HEAD_TAIL_ONLY, BUILD_WHOLE, 
-                     left_pack_size, cell_pos, data_pos, &left_pack_size);
-        SendVideoCell(cell_buffer, has_data_in_cell);
-    } else if (part_size > left_pack_size) {
-        // 需要组合两个包
-        ProcessCombinedVideoPackets(cell_buffer, data_pos, left_pack_size, has_data_in_cell);
-    } else {
-        // 单个包
-        PackVideoCell(cell_buffer, CELL_TYPE_HEAD, BUILD_WHOLE, 
-                     part_size, cell_pos, data_pos, &left_pack_size);
-        SendVideoCell(cell_buffer, has_data_in_cell);
-    }
-}
-
-void PubWorker::ProcessCombinedVideoPackets(char* cell_buffer, char*& data_pos, 
-                                          uint16_t& left_pack_size, bool& has_data_in_cell) {
-    char* cell_pos = cell_buffer + 17; // 跳过头部
-    char data_buf[MAX_BUFFER_SIZE];
-    
-    // 等待更多数据
-    WaitForMoreData();
-    
-    uint16_t next_pack_size = fifo_queue_->PeekNextPackLen();
-    if (next_pack_size == 0) {
-        // 没有更多数据，发送单个包
-        PackVideoCell(cell_buffer, CELL_TYPE_HEAD_TAIL_ONLY, BUILD_WHOLE, 
-                     left_pack_size, cell_pos, data_pos, &left_pack_size);
-        SendVideoCell(cell_buffer, has_data_in_cell);
-    } else {
-        // 组合两个包
-        PackVideoCell(cell_buffer, CELL_TYPE_UNKNOWN, BUILD_FIRST, 
-                     left_pack_size, cell_pos, data_pos, &left_pack_size);
-        
-        // 获取第二个包
-        fifo_queue_->PopPacket(data_buf, &left_pack_size);
-        data_pos = data_buf;
-        
-        uint16_t part_size = CalculateVideoRemainingSpace(cell_buffer);
-        if (part_size >= left_pack_size) {
-            PackVideoCell(cell_buffer, CELL_TYPE_HEAD_TAIL_ANTH_TAIL, BUILD_SECOND, 
-                         left_pack_size, cell_pos, data_pos, &left_pack_size);
-        } else {
-            PackVideoCell(cell_buffer, CELL_TYPE_HEAD_TAIL_ANTH, BUILD_SECOND, 
-                         part_size, cell_pos, data_pos, &left_pack_size);
-        }
-        
-        SendVideoCell(cell_buffer, has_data_in_cell);
-        ++waitNum;
-    }
-}
 
 void PubWorker::WaitForMoreData() {
     sleep_num = 1;
@@ -731,8 +584,6 @@ void* ProcsFunc(void* param) {
     
     if (pub_worker->pub_type() == MSG_PUB) {
         pub_worker->ProcsMsg();
-    } else if (pub_worker->pub_type() == VIDEO_PUB) {
-        pub_worker->ProcsVideo();
     } else {
         LOG_ERROR("Unknown publish type: %d", pub_worker->pub_type());
     }
@@ -773,35 +624,7 @@ bool PubWorker::PackMsgPacketHead(int pack_part_type, int msg_type, int len, uin
     return true;
 }
 
-// ==================== 视频包处理函数 ====================
 
-void PubWorker::PackVideoCell(char* cell_buffer, int cell_type, int build_type,
-                             uint16_t data_len, char*& cell_pos, char*& data_pos,
-                             uint16_t* left_pack_size) {
-    const int kCellHeadLen = 17;
-    char* start_pos = cell_buffer + kCellHeadLen + 1;
-    
-    *(uint8_t*)start_pos = cell_type;
-    start_pos += 1;
-    
-    if (build_type == BUILD_WHOLE || build_type == BUILD_FIRST) {
-        *(uint16_t*)start_pos = data_len;  // first pack tail
-        start_pos += 2;
-        *(uint16_t*)start_pos = data_len;  // body length
-        start_pos += 2;
-        cell_pos = start_pos;
-    }
-    
-    if (build_type == BUILD_SECOND) {
-        uint16_t first_pack_tail = *(uint16_t*)start_pos;
-        *(uint16_t*)(start_pos + 2) = first_pack_tail + data_len; // fill up the body length
-    }
-    
-    memcpy(cell_pos, data_pos, data_len);
-    cell_pos += data_len;
-    data_pos += data_len;
-    *left_pack_size -= data_len;
-}
 
 /*
 重构后的PubWorker类特点：
@@ -875,33 +698,4 @@ uint16_t PubWorker::CalculateRemainingSpace(char* cell_buffer) {
     return remaining > 0 ? remaining : 0;
 }
 
-void PubWorker::SendVideoCell(char* cell_buffer, bool& has_data_in_cell) {
-    if (!has_data_in_cell) {
-        LOG_DEBUG("No data in video cell, skipping send");
-        return;
-    }
-    
-    LOG_DEBUG("Sending video cell");
-    CheckAndSndCell(cell_buffer, &has_data_in_cell);
-}
-
-uint16_t PubWorker::CalculateVideoRemainingSpace(char* cell_buffer) {
-    // 计算视频Cell缓冲区中剩余的空间
-    char* current_pos = cell_buffer + 17; // 跳过头部
-    current_pos += 1; // 跳过服务类型
-    
-    // 找到当前数据结束位置
-    while (current_pos < cell_buffer + cell_size_ - CHECK_SUM_SIZE - STOP_TAG_SIZE) {
-        if (*(uint8_t*)current_pos == 0) {
-            break; // 找到空位置
-        }
-        current_pos += 1; // 跳过cell类型
-        uint16_t data_len = *(uint16_t*)current_pos;
-        current_pos += 2; // 跳过数据长度
-        current_pos += data_len; // 跳过数据
-    }
-    
-    uint16_t remaining = cell_buffer + cell_size_ - CHECK_SUM_SIZE - STOP_TAG_SIZE - current_pos;
-    return remaining > 0 ? remaining : 0;
-}
 

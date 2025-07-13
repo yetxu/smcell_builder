@@ -31,22 +31,6 @@ enum SmFlag{
     MSG_TAIL = 0x03
 };
 
-enum VideoCellType{
-    CELL_TYPE_UNKNOWN = 0,
-    CELL_TYPE_HEAD = 1,
-    CELL_TYPE_HEAD_TAIL_ONLY = 2,       //a complete muti-media pack
-    CELL_TYPE_HEAD_TAIL_ANTH = 4,       //a complete multi-media pack and another one's part
-    CELL_TYPE_HEAD_TAIL_ANTH_TAIL = 8,  //two complete multi-media packs
-
-	CELL_TYPE_BODY = 16,                //body of a multi-media pack
-
-    CELL_TYPE_TAIL_ONLY = 32,           //tail part of a multi-media pack
-
-    CELL_TYPE_TAIL_ANTH = 64,           //tail part of a multi-media pack and another pack's partial
-
-    CELL_TYPE_TAIL_ANTH_TAIL = 128      //tail part of a multi-media pack and another complete pack
-
-};
 
 typedef std::map<std::string, std::string> NetworkRelationMap;
 
@@ -58,14 +42,6 @@ struct MsgPacket{
     uint16_t frame_head; //2 Bytes len frame head, bits 15-13 indicates the message type, 
                          //bits 12-11 indicates the block head flag, 00 is a complete block,  01 head part of a msg packet, 10 body, 11 tail
                          //bits 10-0 indicates the length of the following packet data
-    char packet_data[MAX_DATA_LEN];
-};
-
-struct VideoPacket{
-    uint8_t stream_format;
-    uint8_t cell_type;
-    uint16_t first_pack_tail;
-    uint16_t body_length;
     char packet_data[MAX_DATA_LEN];
 };
 
