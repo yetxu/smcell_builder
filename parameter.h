@@ -34,6 +34,8 @@ public:
 
     int stream_server_num;     //max number of stream server
 
+    int transaction_id;        //transaction id
+
     char db_host[MAX_IP_SIZE];     // Database host address
     int db_port;                   // Database port
     char db_name[MAX_DB_NAME_SIZE];// Database name

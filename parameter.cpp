@@ -38,6 +38,8 @@ void Parameter::LoadConfig(){
 
     stream_server_num  = Number(root["stream_server_num"]).Value();
 
+    transaction_id = Number(root["transaction_id"]).Value();
+
     if (root.Find("database") != root.End()) {
         const Object& db_config = root["database"];
         

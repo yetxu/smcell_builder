@@ -5,6 +5,7 @@
 	"dst_ip" : "199.1.17.25",
 	"dst_port" : 110011,
 	"stream_server_num" : 15,
+	"transaction_id" : 60000,
 	
 	"database": {
 		"host": "localhost",

@@ -125,6 +125,7 @@ public:
 
 	PubWkMap worker_map_;
 	struct sockaddr_in target_addr_;
+	uint32_t transaction_id_;
 //	PrintfNum *printfNum;
 
 private:

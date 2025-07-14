@@ -64,6 +64,7 @@ bool Publisher::Init(Parameter* parameter) {
 	dst_port_ = parameter->dst_port;
 	strcpy(dst_ip_, parameter->dst_ip);
 	cell_size_ = parameter->cell_length;   //491
+	transaction_id_ = parameter->transaction_id;
 
 	LOG_INFO("Initializing Publisher with parameters:");
 	LOG_INFO("  - Receive port: %d", recv_port);
@@ -71,6 +72,7 @@ bool Publisher::Init(Parameter* parameter) {
 	LOG_INFO("  - Destination IP: %s", dst_ip_);
 	LOG_INFO("  - Destination port: %d", dst_port_);
 	LOG_INFO("  - Cell size: %d", cell_size_);
+	LOG_INFO("  - Transaction ID: %d", transaction_id_);
 
 	if (!inner_com_socket_->Create()) {
 		LOG_ERROR("Failed to create inner communication socket");
@@ -97,7 +99,7 @@ bool Publisher::Init(Parameter* parameter) {
 	target_addr_.sin_port = htons(dst_port_);
 	target_addr_.sin_addr.s_addr = inet_addr(dst_ip_);
 
-	AddTransaction(60000);   // tempora transaction id 60000 
+	AddTransaction(transaction_id_);   // tempora transaction id 60000 
 	LOG_INFO("Publisher initialization completed successfully");
 	return true;
 }
@@ -142,7 +144,7 @@ bool Publisher::Init(int argc, char* argv[]) {
 	target_addr_.sin_port = htons(dst_port_);
 	target_addr_.sin_addr.s_addr = inet_addr(dst_ip_);
 
-	AddTransaction(60000);   // temporary  video transaction id 10000
+	AddTransaction(60000);   // temporary   transaction id 10000
 	LOG_INFO("Publisher initialization completed successfully");
 	return true;
 }
